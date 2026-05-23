@@ -34,7 +34,7 @@ export default function SignupScreen({ navigation }) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             console.log('User created:', userCredential.user.email);
             // Replace ensures they go to Home and can't swipe back to Signup
-            navigation.replace('Home');
+            navigation.replace('MainTabs');
         } catch (error) {
             console.error('Signup error:', error);
             alert('Signup failed. Please check your credentials and try again.');
