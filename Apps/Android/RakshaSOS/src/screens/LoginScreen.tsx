@@ -14,12 +14,16 @@ import {
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../config/firebaseconfig';
+import { useApp } from '../context/AppContext';
+import { ensureUserDocument } from '../services/firestoreProfile';
+import { resolveNextSetupRoute } from '../services/onboardingFlow';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation }: { navigation: any }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const { hydrateUserSetup, t } = useApp();
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -32,8 +36,9 @@ export default function LoginScreen({ navigation }) {
 
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            console.log('User logged in:', userCredential.user.email);
-            navigation.replace('MainTabs'); 
+            await ensureUserDocument(userCredential.user.uid, userCredential.user.email);
+            const setup = await hydrateUserSetup(userCredential.user.uid);
+            navigation.replace(resolveNextSetupRoute(setup)); 
         } catch (error) {
             console.error('Login error:', error);
             alert('Login failed. Please check your credentials and try again.');
@@ -57,8 +62,8 @@ export default function LoginScreen({ navigation }) {
                     >
                         {/* Header Section */}
                         <View style={styles.headerContainer}>
-                            <Text style={styles.title}>Welcome Back !</Text>
-                            <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+                            <Text style={styles.title}>{t('loginTitle')}</Text>
+                            <Text style={styles.subtitle}>{t('loginSubtitle')}</Text>
                         </View>
 
                         {/* Input Section */}
@@ -81,7 +86,7 @@ export default function LoginScreen({ navigation }) {
                                 <Text style={styles.inputLabel}>Password</Text>
                                 <View style={styles.passwordWrapper}>
                                     <TextInput 
-                                        placeholder='••••••••' 
+                                        placeholder='********' 
                                         placeholderTextColor="#9CA3AF"
                                         secureTextEntry={!showPassword} 
                                         style={styles.passwordInput} 
@@ -115,7 +120,7 @@ export default function LoginScreen({ navigation }) {
                                 {loading ? (
                                     <ActivityIndicator color="#ffffff" />
                                 ) : (
-                                    <Text style={styles.primaryButtonText}>Sign In</Text>
+                                    <Text style={styles.primaryButtonText}>Sign in</Text>
                                 )}
                             </TouchableOpacity>
 
@@ -164,7 +169,7 @@ const styles = StyleSheet.create({
         right: -100,
         height: 600,
         borderRadius: 300, 
-        backgroundColor: '#4F46E5', // Primary Indigo Color
+        backgroundColor: '#DC2626',
         opacity: 0.1,
     },
     circleOne: {
@@ -174,7 +179,7 @@ const styles = StyleSheet.create({
         width: 140,
         height: 140,
         borderRadius: 70,
-        backgroundColor: '#818CF8',
+        backgroundColor: '#F87171',
         opacity: 0.15,
     },
     circleTwo: {
@@ -184,7 +189,7 @@ const styles = StyleSheet.create({
         width: 200,
         height: 200,
         borderRadius: 100,
-        backgroundColor: '#C7D2FE',
+        backgroundColor: '#FECACA',
         opacity: 0.2,
     },
     // ------------------------------------
@@ -264,7 +269,7 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     eyeText: {
-        color: '#4F46E5',
+        color: '#DC2626',
         fontWeight: '600',
         fontSize: 14,
     },
@@ -272,7 +277,7 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-end',
     },
     forgotPasswordText: {
-        color: '#4F46E5',
+        color: '#DC2626',
         fontWeight: '600',
         fontSize: 14,
     },
@@ -280,19 +285,19 @@ const styles = StyleSheet.create({
         marginBottom: 30,
     },
     primaryButton: {
-        backgroundColor: '#4F46E5', 
+        backgroundColor: '#DC2626', 
         height: 56,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#4F46E5',
+        shadowColor: '#DC2626',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 5,
     },
     primaryButtonDisabled: {
-        backgroundColor: '#818CF8',
+        backgroundColor: '#F87171',
     },
     primaryButtonText: {
         color: '#FFFFFF',
@@ -341,7 +346,7 @@ const styles = StyleSheet.create({
         fontSize: 15,
     },
     footerLink: {
-        color: '#4F46E5',
+        color: '#DC2626',
         fontSize: 15,
         fontWeight: '700',
     },

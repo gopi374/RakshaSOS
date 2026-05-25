@@ -4,10 +4,13 @@ import { Ionicons } from '@expo/vector-icons'; // Expo's built-in icon library
 
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen'; // The placeholder we just made
+import { useApp } from '../context/AppContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs() {
+  const { t } = useApp();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -16,7 +19,7 @@ export default function MainTabs() {
         
         // Dynamic Icon Logic
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
+          let iconName: keyof typeof Ionicons.glyphMap = 'home-outline';
 
           if (route.name === 'HomeTab') {
             iconName = focused ? 'home' : 'home-outline';
@@ -28,7 +31,7 @@ export default function MainTabs() {
         },
         
         // Tab Bar Styling
-        tabBarActiveTintColor: '#4F46E5', // Your app's primary indigo color
+        tabBarActiveTintColor: '#DC2626',
         tabInactiveTintColor: 'gray',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
@@ -43,12 +46,12 @@ export default function MainTabs() {
       <Tab.Screen 
         name="HomeTab" 
         component={HomeScreen} 
-        options={{ tabBarLabel: 'Home' }} 
+        options={{ tabBarLabel: t('home') }} 
       />
       <Tab.Screen 
         name="ProfileTab" 
         component={ProfileScreen} 
-        options={{ tabBarLabel: 'Profile' }} 
+        options={{ tabBarLabel: t('profile') }} 
       />
     </Tab.Navigator>
   );
