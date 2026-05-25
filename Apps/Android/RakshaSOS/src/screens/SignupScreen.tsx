@@ -14,12 +14,16 @@ import {
 } from 'react-native';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../config/firebaseconfig';
+import { useApp } from '../context/AppContext';
+import { ensureUserDocument } from '../services/firestoreProfile';
+import { resolveNextSetupRoute } from '../services/onboardingFlow';
 
-export default function SignupScreen({ navigation }) {
+export default function SignupScreen({ navigation }: { navigation: any }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const { hydrateUserSetup, t } = useApp();
 
     const handleSignup = async () => {
         if (!email || !password) {
@@ -32,9 +36,9 @@ export default function SignupScreen({ navigation }) {
 
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            console.log('User created:', userCredential.user.email);
-            // Replace ensures they go to Home and can't swipe back to Signup
-            navigation.replace('MainTabs');
+            await ensureUserDocument(userCredential.user.uid, userCredential.user.email);
+            const setup = await hydrateUserSetup(userCredential.user.uid);
+            navigation.replace(resolveNextSetupRoute(setup));
         } catch (error) {
             console.error('Signup error:', error);
             alert('Signup failed. Please check your credentials and try again.');
@@ -58,8 +62,8 @@ export default function SignupScreen({ navigation }) {
                     >
                         {/* Header Section */}
                         <View style={styles.headerContainer}>
-                            <Text style={styles.title}>Create Account</Text>
-                            <Text style={styles.subtitle}>Join us and start your journey</Text>
+                            <Text style={styles.title}>{t('signupTitle')}</Text>
+                            <Text style={styles.subtitle}>{t('signupSubtitle')}</Text>
                         </View>
 
                         {/* Input Section */}
@@ -82,7 +86,7 @@ export default function SignupScreen({ navigation }) {
                                 <Text style={styles.inputLabel}>Password</Text>
                                 <View style={styles.passwordWrapper}>
                                     <TextInput 
-                                        placeholder='••••••••' 
+                                        placeholder='********' 
                                         placeholderTextColor="#9CA3AF"
                                         secureTextEntry={!showPassword} 
                                         style={styles.passwordInput} 
@@ -135,7 +139,7 @@ export default function SignupScreen({ navigation }) {
                         {/* Footer - Navigates back to Login */}
                         <View style={styles.footerContainer}>
                             <Text style={styles.footerText}>Already have an account? </Text>
-                            <TouchableOpacity onPress={() => navigation.goBack()}>
+                            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
                                 <Text style={styles.footerLink}>Sign In</Text>
                             </TouchableOpacity>
                         </View>
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
         right: -100,
         height: 600,
         borderRadius: 300, 
-        backgroundColor: '#4F46E5', 
+        backgroundColor: '#DC2626', 
         opacity: 0.1,
     },
     circleOne: {
@@ -172,7 +176,7 @@ const styles = StyleSheet.create({
         width: 140,
         height: 140,
         borderRadius: 70,
-        backgroundColor: '#818CF8',
+        backgroundColor: '#F87171',
         opacity: 0.15,
     },
     circleTwo: {
@@ -182,7 +186,7 @@ const styles = StyleSheet.create({
         width: 200,
         height: 200,
         borderRadius: 100,
-        backgroundColor: '#C7D2FE',
+        backgroundColor: '#FECACA',
         opacity: 0.2,
     },
     // ------------------------------------
@@ -262,7 +266,7 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     eyeText: {
-        color: '#4F46E5',
+        color: '#DC2626',
         fontWeight: '600',
         fontSize: 14,
     },
@@ -270,19 +274,19 @@ const styles = StyleSheet.create({
         marginBottom: 30,
     },
     primaryButton: {
-        backgroundColor: '#4F46E5', 
+        backgroundColor: '#DC2626', 
         height: 56,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#4F46E5',
+        shadowColor: '#DC2626',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 5,
     },
     primaryButtonDisabled: {
-        backgroundColor: '#818CF8',
+        backgroundColor: '#F87171',
     },
     primaryButtonText: {
         color: '#FFFFFF',
@@ -331,7 +335,7 @@ const styles = StyleSheet.create({
         fontSize: 15,
     },
     footerLink: {
-        color: '#4F46E5',
+        color: '#DC2626',
         fontSize: 15,
         fontWeight: '700',
     },

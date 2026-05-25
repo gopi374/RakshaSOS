@@ -1,22 +1,21 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // Replace these with your actual Firebase project config
 const firebaseConfig = {
-  apiKey: "AIzaSyCufcFJ5bJqzIYaJxapvVRJ1tUrneEBqcw",
-  authDomain: "template-ed3eb.firebaseapp.com",
-  projectId: "template-ed3eb",
-  storageBucket: "template-ed3eb.firebasestorage.app",
-  messagingSenderId: "489538761629",
-  appId: "1:489538761629:web:6485a0a6fb9f4f68e5b574"
+  apiKey: "AIzaSyBPeMq2qvyDOwz1O3wMwQaJ6KFS7Nu-ArY",
+  authDomain: "raksha-sos.firebaseapp.com",
+  projectId: "raksha-sos",
+  storageBucket: "raksha-sos.firebasestorage.app",
+  messagingSenderId: "300614452418",
+  appId: "1:300614452418:web:5acd9e7bfdf6f8d56fe75b",
+  measurementId: "G-YNCYX0FQP6"
 };
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth with AsyncStorage for persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-export { auth };
+export { auth, db };
