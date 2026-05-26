@@ -1,7 +1,63 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import "../styles/HospitalSignup.css";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
+
+import { auth } from "../firebase/firebaseConfig";
+
 
 function HospitalSignup() {
+  const [email, setEmail] = useState("");
+
+const [password, setPassword] = useState("");
+
+const [confirmPassword, setConfirmPassword] = useState("");
+
+  const handleSignup = async () => {
+
+  if (!email || !password) {
+
+    alert("Please fill required fields.");
+
+    return;
+  }
+
+  if (password !== confirmPassword) {
+
+    alert("Passwords do not match.");
+
+    return;
+  }
+
+  try {
+
+    const userCredential =
+      await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+    await sendEmailVerification(
+      userCredential.user
+    );
+
+    alert(
+      "Verification email sent. Please verify your email."
+    );
+
+    navigate("/hospital-login");
+
+  } catch (error: any) {
+
+    alert(error.message);
+
+  }
+
+};
 
   const navigate = useNavigate();
 
@@ -72,7 +128,14 @@ function HospitalSignup() {
             <div className="input-grid">
 
               <input placeholder="Hospital Name" />
-              <input placeholder="Official Email" />
+             <input
+  type="email"
+  placeholder="Official Email"
+  value={email}
+  onChange={(e) =>
+    setEmail(e.target.value)
+  }
+/>
 
               <input placeholder="Emergency Contact" />
               <input placeholder="Address" />
@@ -173,22 +236,35 @@ function HospitalSignup() {
 
             <div className="input-grid">
 
-              <input
-                type="password"
-                placeholder="Create Admin Password"
-              />
+          <input
+  type="password"
+  placeholder="Create Admin Password"
+  value={password}
+  onChange={(e) =>
+    setPassword(e.target.value)
+  }
+/>
 
-              <input
-                type="password"
-                placeholder="Confirm Password"
-              />
+            <input
+  type="password"
+  placeholder="Confirm Password"
+  value={confirmPassword}
+  onChange={(e) =>
+    setConfirmPassword(
+      e.target.value
+    )
+  }
+/>
 
             </div>
 
           </div>
 
           {/* Button */}
-          <button className="register-hospital-btn">
+         <button
+  className="register-hospital-btn"
+  onClick={handleSignup}
+>
 
             Register Hospital Network
 

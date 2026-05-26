@@ -12,6 +12,7 @@ import HospitalLogin from "./pages/HospitalLogin";
 import PoliceDashboard from "./pages/PoliceDashboard";
 import PoliceSignup from "./pages/PoliceSignup";
 import HospitalSignup from "./pages/HospitalSignup";
+import HospitalDashboard from "./pages/HospitalDashboard";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/police-login" element={<PoliceLogin />} />
         <Route path="/hospital-login" element={<HospitalLogin />} />
         <Route path="/police-dashboard" element={<PoliceDashboard />} />
+          <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
         <Route path="/police-signup" element={<PoliceSignup />} />
         <Route path="/hospital-signup" element={<HospitalSignup />} />
       </Routes>
