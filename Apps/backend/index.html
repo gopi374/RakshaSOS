@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RakshaSOS — Server Test</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-functions-compat.js"></script>
+  <style>
+    body { font-family: monospace; background: #111; color: #eee; padding: 20px; }
+    h2   { color: #f55; }
+    button { background: #c0392b; color: #fff; border: none; padding: 10px 18px; margin: 6px; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #e74c3c; }
+    #log { background: #1a1a1a; padding: 16px; border-radius: 8px; margin-top: 20px; min-height: 200px; white-space: pre-wrap; font-size: 13px; }
+    .ok  { color: #2ecc71; }
+    .err { color: #e74c3c; }
+    .inf { color: #3498db; }
+    input { background: #222; color: #eee; border: 1px solid #444; padding: 8px; border-radius: 4px; width: 260px; margin: 4px; }
+    .section { border: 1px solid #333; border-radius: 8px; padding: 14px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+
+<h2>🚨 RakshaSOS — Server Test Panel</h2>
+
+<!-- Firebase Config -->
+<div class="section">
+  <b>Firebase Config</b><br>
+  <input id="apiKey"     placeholder="apiKey" />
+  <input id="projectId"  placeholder="projectId" />
+  <input id="appId"      placeholder="appId" />
+  <br>
+  <button onclick="initFirebase()">🔌 Connect Firebase</button>
+</div>
+
+<!-- Test Buttons -->
+<div class="section">
+  <b>Tests</b><br>
+  <button onclick="insertDummyData()">1️⃣  Insert Dummy Data</button>
+  <button onclick="triggerSOS()">2️⃣  Trigger SOS</button>
+  <button onclick="acceptSOS()">3️⃣  Hospital Accept</button>
+  <button onclick="updateTracking()">4️⃣  Update ETA/Tracking</button>
+  <button onclick="resolveSOS()">5️⃣  Resolve SOS</button>
+  <button onclick="checkTimeline()">📋 Check Timeline</button>
+  <button onclick="clearLog()">🗑️ Clear Log</button>
+</div>
+
+<div id="log">Waiting for Firebase connection...</div>
+
+<script>
+  let db, functions, sosId, userId, hospitalId;
+
+  // ── Log helpers ───────────────────────────────────────────
+  const log = (msg, type="inf") => {
+    const el = document.getElementById("log");
+    const time = new Date().toLocaleTimeString();
+    el.innerHTML += `<span class="${type}">[${time}] ${msg}</span>\n`;
+    el.scrollTop = el.scrollHeight;
+  };
+  const clearLog = () => document.getElementById("log").innerHTML = "";
+
+  // ── Init Firebase ─────────────────────────────────────────
+  function initFirebase() {
+    try {
+      const config = {
+        apiKey:    document.getElementById("apiKey").value,
+        projectId: document.getElementById("projectId").value,
+        appId:     document.getElementById("appId").value,
+      };
+      if (!firebase.apps.length) firebase.initializeApp(config);
+      db        = firebase.firestore();
+      functions = firebase.functions();
+
+      // ── Add these 2 lines ──
+      db.useEmulator("localhost", 9090);
+      functions.useEmulator("localhost", 5001);
+
+      log("Firebase connected ✅ (local emulator)", "ok");
+    } catch (e) {
+      log("Firebase init failed: " + e.message, "err");
+    }
+  }
+
+  // ── 1. Insert Dummy Data ──────────────────────────────────
+  async function insertDummyData() {
+  try {
+    log("Inserting dummy data...");
+    const batch = db.batch();
+
+    userId     = "test_user_gopi";
+    hospitalId = "test_hospital_citycare";
+
+    // All writes in one batch
+    batch.set(db.collection("users").doc(userId), {
+      full_name: "gopi", phone_number: "+917389600475",
+      is_verified: true, fcm_token: "dummy_fcm_gopi",
+      last_known_lat: 23.2599, last_known_lng: 77.4126,
+    });
+
+    batch.set(db.collection("medical_profiles").doc(userId), {
+      user_id: userId, blood_group: "B+",
+      known_allergies: ["Penicillin"], chronic_conditions: "Diabetes",
+    });
+
+    batch.set(db.collection("hospitals").doc(hospitalId), {
+      name: "City Care Hospital", phone_number: "+917389600475",
+      latitude: 23.258, longitude: 77.410,
+      is_open_24_7: true, is_trauma_center: true,
+      total_beds: 100, available_beds: 42,
+    });
+
+    batch.set(db.collection("police_stations").doc("test_police"), {
+      name: "MP Nagar Police Station", phone_number: "+917389600475",
+      latitude: 23.257, longitude: 77.412,
+      jurisdiction: "MP Nagar", is_active_duty: true,
+    });
+
+    batch.set(db.collection("hospital_staff").doc("test_staff"), {
+      hospital_id: hospitalId, name: "Dr. Admin",
+      fcm_token: "dummy_fcm_hospital", role: "operator",
+    });
+
+    // One single network call
+    await batch.commit();
+
+    // Emergency contact separately (needs auto ID)
+    await db.collection("emergency_contacts").add({
+      user_id: userId, name: "Mom", relationship: "Mother",
+      phone_number: "+917389600475", priority: "primary",
+      is_notified_on_sos: true,
+    });
+
+    log("Dummy data inserted ✅", "ok");
+  } catch (e) { log("Insert failed: " + e.message, "err"); }
+ }
+
+  // ── 2. Trigger SOS ───────────────────────────────────────
+  async function triggerSOS() {
+    try {
+      log("Triggering SOS...");
+      const ref = await db.collection("sos_alerts").add({
+        user_id: userId || "test_user_gopi",
+        status: "active",
+        trigger_type: "manual_button",
+        last_known_lat: 23.2599,
+        last_known_lng: 77.4126,
+        audio_recording_url: null,
+        hospitals_notified: [],
+        accepted_by_hospital: null,
+        accepted_by_name: null,
+        ambulance_eta: null,
+        start_time: firebase.firestore.FieldValue.serverTimestamp(),
+        end_time: null,
+      });
+      sosId = ref.id;
+      log(`SOS created: ${sosId}`, "ok");
+      log("Waiting 5s for Cloud Function to process...");
+
+      setTimeout(async () => {
+        const snap = await db.collection("sos_alerts").doc(sosId).get();
+        const data = snap.data();
+        log(`Status: ${data.status}`, data.status === "active" ? "ok" : "inf");
+        log(`Hospitals notified: ${data.hospitals_notified?.length || 0}`, "ok");
+        log(`Nearby users notified: ${data.nearby_users_notified?.length || 0}`, "ok");
+      }, 5000);
+
+    } catch (e) { log("SOS trigger failed: " + e.message, "err"); }
+  }
+
+  // ── 3. Hospital Accept ────────────────────────────────────
+  async function acceptSOS() {
+    if (!sosId) { log("Trigger SOS first!", "err"); return; }
+    try {
+      log("Hospital accepting SOS...");
+      await db.collection("sos_alerts").doc(sosId).update({
+        accepted_by_hospital: hospitalId || "test_hospital_citycare",
+        accepted_by_name: "City Care Hospital",
+        ambulance_eta: 10,
+        accepted_at: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      log("SOS accepted by City Care Hospital ✅", "ok");
+      log("Check Firebase Console → Functions logs for FCM sent to victim + police");
+    } catch (e) { log("Accept failed: " + e.message, "err"); }
+  }
+
+  // ── 4. Update Live Tracking + ETA ────────────────────────
+  async function updateTracking() {
+    if (!sosId) { log("Trigger SOS first!", "err"); return; }
+    try {
+      log("Updating ambulance location + ETA...");
+      const fn = functions.httpsCallable("updateLiveTracking");
+      const result = await fn({
+        sos_id: sosId,
+        latitude: 23.2599,
+        longitude: 77.4126,
+        battery_level: 72,
+        is_ambulance: true,
+        ambulance_lat: 23.2750,
+        ambulance_lng: 77.4200,
+      });
+      log(`ETA updated: ${result.data.eta_minutes} min ✅`, "ok");
+    } catch (e) { log("Tracking update failed: " + e.message, "err"); }
+  }
+
+  // ── 5. Resolve SOS ───────────────────────────────────────
+  async function resolveSOS() {
+    if (!sosId) { log("Trigger SOS first!", "err"); return; }
+    try {
+      log("Resolving SOS...");
+      await db.collection("sos_alerts").doc(sosId).update({
+        status: "resolved",
+        resolved_by: "hospital",
+        end_time: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      log("SOS resolved ✅", "ok");
+    } catch (e) { log("Resolve failed: " + e.message, "err"); }
+  }
+
+  // ── Check Timeline ────────────────────────────────────────
+  async function checkTimeline() {
+    if (!sosId) { log("Trigger SOS first!", "err"); return; }
+    try {
+      log("Fetching emergency timeline...");
+      const snap = await db.collection("emergency_timeline")
+        .where("sos_id", "==", sosId)
+        .orderBy("timestamp")
+        .get();
+      if (snap.empty) { log("No timeline events yet (wait for function)", "inf"); return; }
+      snap.docs.forEach((doc) => {
+        const d = doc.data();
+        log(`→ ${d.event_type} | ${JSON.stringify(d.event_details)}`, "ok");
+      });
+    } catch (e) { log("Timeline fetch failed: " + e.message, "err"); }
+  }
+</script>
+</body>
+</html>

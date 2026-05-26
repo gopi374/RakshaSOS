@@ -1,4 +1,4 @@
-﻿# Logs
+# Logs
 logs
 *.log
 npm-debug.log*
@@ -88,5 +88,3 @@ serviceAccountKey.json
 # Local development and redundant files
 test.js
 /package-lock.json
-
-Apps/node_modules/
