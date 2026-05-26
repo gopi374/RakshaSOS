@@ -1,9 +1,12 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons'; // Expo's built-in icon library
+import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/HomeScreen';
-import ProfileScreen from '../screens/ProfileScreen'; // The placeholder we just made
+import ProfileScreen from '../screens/ProfileScreen';
+import MapScreen from '../screens/MapScreen';
+import HelpScreen from '../screens/HelpScreen';
+import AssistantScreen from '../screens/AssistantScreen';
 import { useApp } from '../context/AppContext';
 
 const Tab = createBottomTabNavigator();
@@ -14,44 +17,66 @@ export default function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        // Hide the top header for the tabs since your HomeScreen has its own header design
-        headerShown: false, 
-        
-        // Dynamic Icon Logic
+        headerShown: false,
+
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'home-outline';
+          let iconName: any;
 
           if (route.name === 'HomeTab') {
-            iconName = focused ? 'home' : 'home-outline';
+            iconName = focused ? 'shield-half' : 'shield-half-outline';
+          } else if (route.name === 'MapTab') {
+            iconName = focused ? 'map' : 'map-outline';
+          } else if (route.name === 'HelpTab') {
+            iconName = focused ? 'help-circle' : 'help-circle-outline';
+          } else if (route.name === 'AssistantTab') {
+            iconName = focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline';
           } else if (route.name === 'ProfileTab') {
             iconName = focused ? 'person' : 'person-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        
-        // Tab Bar Styling
-        tabBarActiveTintColor: '#DC2626',
-        tabInactiveTintColor: 'gray',
+
+        tabBarActiveTintColor: '#ac2b2e', // Earthy Maroon brand color
+        tabBarInactiveTintColor: '#777777',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          height: 60,
-          paddingBottom: 8,
+          borderTopColor: '#F0EBEB',
+          height: 65,
+          paddingBottom: 10,
           paddingTop: 8,
         },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        }
       })}
     >
-      <Tab.Screen 
-        name="HomeTab" 
-        component={HomeScreen} 
-        options={{ tabBarLabel: t('home') }} 
+      <Tab.Screen
+        name="HomeTab"
+        component={HomeScreen}
+        options={{ tabBarLabel: 'SOS' }}
       />
-      <Tab.Screen 
+      <Tab.Screen
+        name="MapTab"
+        component={MapScreen}
+        options={{ tabBarLabel: 'Map' }}
+      />
+      <Tab.Screen
+        name="HelpTab"
+        component={HelpScreen}
+        options={{ tabBarLabel: 'Manual' }}
+      />
+      <Tab.Screen
+        name="AssistantTab"
+        component={AssistantScreen}
+        options={{ tabBarLabel: 'AI Guide' }}
+      />
+      <Tab.Screen
         name="ProfileTab" 
-        component={ProfileScreen} 
-        options={{ tabBarLabel: t('profile') }} 
+        component={ProfileScreen}
+        options={{ tabBarLabel: 'Profile' }}
       />
     </Tab.Navigator>
   );
