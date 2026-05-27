@@ -1,18 +1,4 @@
-import { useEffect, useState } from "react";
-
-import {
-  collection,
-  onSnapshot,
-  doc,
-  updateDoc,
-  addDoc,
-} from "firebase/firestore";
-
-import {
-  signOut
-} from "firebase/auth";
-
-import { auth } from "../firebase/firebaseConfig";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   GoogleMap,
@@ -20,575 +6,750 @@ import {
   useJsApiLoader,
 } from "@react-google-maps/api";
 
-import { useNavigate } from "react-router-dom";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
-import { db } from "../firebase/firebaseConfig";
+import {
+  auth,
+  db,
+} from "../firebase/firebaseConfig";
 
 import "../styles/HospitalDashboard.css";
 
 import {
-  Bell,
-  Settings,
-  HelpCircle,
-  MapPinned,
-  ClipboardList,
-  Ambulance,
-  BarChart3,
-  Users,
-  LogOut,
   ShieldAlert,
-  Plus,
-  Minus,
-  LocateFixed,
+  Ambulance,
+  Phone,
+  Navigation,
+  Siren,
 } from "lucide-react";
+
+type SOSData = {
+  id: string;
+
+  victimName: string;
+
+  victimPhone: string;
+
+  type: string;
+
+  severity: string;
+
+  latitude: number;
+
+  longitude: number;
+
+  humanReadableLocation: string;
+
+  medicalHistory: string;
+
+  bloodGroup: string;
+
+  status: string;
+
+  acceptedHospitalId?: string;
+
+  acceptedHospitalName?: string;
+
+  assignedAmbulance?: string;
+
+  ambulanceStatus?: string;
+
+  estimatedMinutes?: number;
+
+  dispatchTime?: number;
+
+  createdAt: number;
+};
+
+type AmbulanceData = {
+  id: string;
+
+  hospitalId: string;
+
+  hospitalName: string;
+
+  ambulanceNumber: string;
+
+  driverName: string;
+
+  driverPhone: string;
+
+  status: string;
+
+  progress: number;
+
+  estimatedMinutes?: number;
+
+  dispatchTime?: number;
+
+  assignedSOS?: string;
+
+  victimLat?: number;
+
+  victimLng?: number;
+};
 
 function HospitalDashboard() {
 
-  const navigate = useNavigate();
+  const [currentHospitalId,
+    setCurrentHospitalId] =
+    useState("");
 
-  /* TYPES */
+  const [authReady,
+    setAuthReady] =
+    useState(false);
 
-  type SOSDataType = {
-    id: string;
-    latitude: number;
-    longitude: number;
-    type: string;
-    severity: string;
-    status: string;
-  };
+  const [hospitalName,
+    setHospitalName] =
+    useState("");
 
-  type AmbulanceType = {
-    id: string;
-    driverName: string;
-    eta: string;
-    available: boolean;
-  };
+  const [hospitalLocation,
+    setHospitalLocation] =
+    useState("");
 
-  /* STATES */
+  const [hospitalLatitude,
+    setHospitalLatitude] =
+    useState(22.7196);
 
-  const [sosData, setSosData] =
-    useState<SOSDataType[]>([]);
+  const [hospitalLongitude,
+    setHospitalLongitude] =
+    useState(75.8577);
 
-  const [ambulances, setAmbulances] =
-    useState<AmbulanceType[]>([]);
+  const [allSOS,
+    setAllSOS] =
+    useState<SOSData[]>([]);
 
-  const [selectedSOS, setSelectedSOS] =
-    useState<SOSDataType | null>(null);
+  const [ambulances,
+    setAmbulances] =
+    useState<
+      AmbulanceData[]
+    >([]);
 
-  /* NOTIFICATIONS */
-
-  const unreadSOS =
-    sosData.filter(
-      (sos) => sos.status === "pending"
-    ).length;
-
-  /* LOGOUT */
-
-const handleLogout = async () => {
-
-  const confirmLogout =
-    window.confirm(
-      "Are you sure you want to logout?"
+  const [selectedSOS,
+    setSelectedSOS] =
+    useState<SOSData | null>(
+      null
     );
-
-  if (!confirmLogout) return;
-
-  try {
-
-    await signOut(auth);
-
-   navigate("/hospital-login");
-
-  } catch (error) {
-
-    console.log(error);
-
-  }
-
-};
 
   /* GOOGLE MAP */
 
   const { isLoaded } =
     useJsApiLoader({
+
       googleMapsApiKey:
-        import.meta.env
-          .VITE_GOOGLE_MAPS_API,
+        "YOUR_GOOGLE_MAPS_API_KEY",
+
     });
+
+  /* AUTH */
+
+  useEffect(() => {
+
+    const unsubscribe =
+      auth.onAuthStateChanged(
+        (user) => {
+
+          if (user) {
+
+            setCurrentHospitalId(
+              user.uid
+            );
+
+          } else {
+
+            setCurrentHospitalId(
+              ""
+            );
+
+          }
+
+          setAuthReady(true);
+
+        }
+      );
+
+    return () =>
+      unsubscribe();
+
+  }, []);
+
+  /* HOSPITAL DATA */
+
+  useEffect(() => {
+
+    const fetchHospital =
+      async () => {
+
+        if (
+          !currentHospitalId
+        )
+          return;
+
+        const hospitalRef =
+          doc(
+            db,
+            "hospitals",
+            currentHospitalId
+          );
+
+        const snapshot =
+          await getDoc(
+            hospitalRef
+          );
+
+        if (
+          snapshot.exists()
+        ) {
+
+          const data =
+            snapshot.data();
+
+          setHospitalName(
+            data.hospitalName ||
+            "Hospital"
+          );
+
+          setHospitalLocation(
+            data.fullAddress ||
+            "Unknown Location"
+          );
+
+          setHospitalLatitude(
+            data.latitude ||
+            22.7196
+          );
+
+          setHospitalLongitude(
+            data.longitude ||
+            75.8577
+          );
+
+        }
+
+      };
+
+    fetchHospital();
+
+  }, [currentHospitalId]);
 
   /* SOS LISTENER */
 
   useEffect(() => {
 
-    const unsubscribe = onSnapshot(
-      collection(db, "sos"),
+    const unsubscribe =
+      onSnapshot(
 
-      (snapshot) => {
+        collection(
+          db,
+          "sos"
+        ),
 
-        const data: SOSDataType[] =
-          snapshot.docs.map((doc) => {
+        (snapshot) => {
 
-            const firebaseData =
-              doc.data();
+          const sosData:
+            SOSData[] =
+            snapshot.docs.map(
+              (
+                firebaseDoc
+              ) => {
 
-            return {
+                const data =
+                  firebaseDoc.data();
 
-              id: doc.id,
+                return {
 
-              latitude:
-                firebaseData.latitude || 0,
+                  id:
+                    firebaseDoc.id,
 
-              longitude:
-                firebaseData.longitude || 0,
+                  victimName:
+                    data.victimName ||
+                    "Victim",
 
-              type:
-                firebaseData.type || "",
+                  victimPhone:
+                    data.victimPhone ||
+                    "",
 
-              severity:
-                firebaseData.severity || "",
+                  type:
+                    data.type ||
+                    "Emergency",
 
-              status:
-                firebaseData.status || "",
+                  severity:
+                    data.severity ||
+                    "medium",
 
-            };
+                  latitude:
+                    data.latitude ||
+                    0,
 
-          });
+                  longitude:
+                    data.longitude ||
+                    0,
 
-        setSosData(data);
+                  humanReadableLocation:
+                    data.humanReadableLocation ||
+                    "Unknown Location",
 
-      }
-    );
+                  medicalHistory:
+                    data.medicalHistory ||
+                    "No medical history",
 
-    return () => unsubscribe();
+                  bloodGroup:
+                    data.bloodGroup ||
+                    "Unknown",
+
+                  status:
+                    data.status ||
+                    "pending",
+
+                  acceptedHospitalId:
+                    data.acceptedHospitalId ||
+                    "",
+
+                  acceptedHospitalName:
+                    data.acceptedHospitalName ||
+                    "",
+
+                  assignedAmbulance:
+                    data.assignedAmbulance ||
+                    "",
+
+                  ambulanceStatus:
+                    data.ambulanceStatus ||
+                    "",
+
+                  estimatedMinutes:
+                    data.estimatedMinutes ||
+                    0,
+
+                  dispatchTime:
+                    data.dispatchTime ||
+                    0,
+
+                  createdAt:
+                    data.createdAt ||
+                    Date.now(),
+
+                };
+
+              }
+            );
+
+          setAllSOS(
+            sosData
+          );
+
+        }
+      );
+
+    return () =>
+      unsubscribe();
 
   }, []);
 
-  /* AMBULANCE LISTENER */
-
-  useEffect(() => {
-
-    const unsubscribe = onSnapshot(
-      collection(db, "ambulances"),
-
-      (snapshot) => {
-
-        const data: AmbulanceType[] =
-          snapshot.docs.map((doc) => {
-
-            const firebaseData =
-              doc.data();
-
-            return {
-
-              id: doc.id,
-
-              driverName:
-                firebaseData.driverName ||
-                "",
-
-              eta:
-                firebaseData.eta || "",
-
-              available:
-                firebaseData.available ||
-                false,
-
-            };
-
-          });
-
-        setAmbulances(data);
-
-      }
-    );
-
-    return () => unsubscribe();
-
-  }, []);
-
-  /* FILTERS */
-
-  const pendingSOS =
-    sosData.find(
-      (sos) =>
-        sos.status === "pending"
-    );
-
-  const acceptedSOS =
-    sosData.filter(
-      (sos) =>
-        sos.status === "accepted"
-    );
-
-  /* AUTO SELECT */
+  /* AMBULANCES */
 
   useEffect(() => {
 
     if (
-      acceptedSOS.length > 0 &&
-      !selectedSOS
-    ) {
+      !currentHospitalId
+    )
+      return;
 
-      setSelectedSOS(
-        acceptedSOS[0]
-      );
+    const q = query(
 
-    }
+      collection(
+        db,
+        "ambulances"
+      ),
 
-  }, [acceptedSOS]);
+      where(
+        "hospitalId",
+        "==",
+        currentHospitalId
+      )
 
-  /* ACCEPT */
-
-  const acceptSOS = async (
-    id: string
-  ) => {
-
-    await updateDoc(
-      doc(db, "sos", id),
-      {
-        status: "accepted",
-      }
     );
 
-  };
+    const unsubscribe =
+      onSnapshot(
+        q,
+
+        (
+          snapshot
+        ) => {
+
+          const data:
+            AmbulanceData[] =
+            snapshot.docs.map(
+              (
+                firebaseDoc
+              ) => ({
+
+                id:
+                  firebaseDoc.id,
+
+                ...(firebaseDoc.data() as Omit<
+                  AmbulanceData,
+                  "id"
+                >),
+
+              })
+            );
+
+          setAmbulances(
+            data
+          );
+
+        }
+      );
+
+    return () =>
+      unsubscribe();
+
+  }, [currentHospitalId]);
+
+  /* PENDING SOS */
+
+  const pendingSOS =
+    useMemo(() => {
+
+      return allSOS.find(
+        (sos) =>
+          sos.status ===
+            "pending" &&
+          !sos.acceptedHospitalId
+      );
+
+    }, [allSOS]);
+
+  /* ACCEPTED SOS */
+
+  const acceptedSOS =
+    useMemo(() => {
+
+      return allSOS.filter(
+        (sos) =>
+          sos.status ===
+            "accepted" &&
+          sos.acceptedHospitalId ===
+            currentHospitalId
+      );
+
+    }, [
+      allSOS,
+      currentHospitalId,
+    ]);
+
+  /* ACTIVE AMBULANCES */
+
+  const activeAmbulances =
+    useMemo(() => {
+
+      return ambulances.filter(
+        (ambulance) =>
+          ambulance.status ===
+            "dispatched" ||
+          ambulance.status ===
+            "arrived"
+      );
+
+    }, [ambulances]);
+
+  /* ACCEPT SOS */
+
+  const acceptSOS =
+    async (
+      sosId: string
+    ) => {
+
+      await updateDoc(
+        doc(
+          db,
+          "sos",
+          sosId
+        ),
+
+        {
+          status:
+            "accepted",
+
+          acceptedHospitalId:
+            currentHospitalId,
+
+          acceptedHospitalName:
+            hospitalName,
+        }
+      );
+
+    };
 
   /* REJECT */
 
-  const rejectSOS = async (
-    id: string
-  ) => {
+  const rejectSOS =
+    async (
+      sosId: string
+    ) => {
 
-    await updateDoc(
-      doc(db, "sos", id),
-      {
-        status: "rejected",
-      }
-    );
+      await updateDoc(
+        doc(
+          db,
+          "sos",
+          sosId
+        ),
 
-    await addDoc(
-      collection(
-        db,
-        "incident_logs"
-      ),
-      {
-        sosId: id,
-        status: "rejected",
-        createdAt: Date.now(),
-      }
-    );
+        {
+          status:
+            "rejected",
+        }
+      );
 
-  };
+    };
+
+  if (!authReady) {
+
+    return null;
+
+  }
 
   return (
 
-    <div className="hospital-dashboard">
+    <div className="dashboard-page">
 
-      {/* SIDEBAR */}
+      <div className="dashboard-grid">
 
-      <aside className="sidebar">
+        {/* LEFT */}
 
-        <div>
+        <div className="map-section">
 
-          <div className="sidebar-top">
+          <div className="map-header">
 
-            <h1>
-              CITY HOSPITAL
-              <span> Vanguard</span>
-            </h1>
+            <h2>
+              Tactical Response Map
+            </h2>
 
-            <p>COMMAND HUB</p>
+            <p>
 
-            <h2>Sector 7 Dispatch</h2>
-
-          </div>
-
-          <div className="sidebar-menu">
-
-            <div className="menu-item active">
-              <ShieldAlert size={20} />
-              <span>Command Center</span>
-            </div>
-
-            <div
-              className="menu-item"
-              onClick={() =>
-                navigate("/incident-logs")
+              {hospitalName}
+              {" • "}
+              {
+                hospitalLocation
               }
-            >
-              <ClipboardList size={20} />
-              <span>Incident Logs</span>
-            </div>
 
-            <div
-              className="menu-item"
-              onClick={() =>
-                navigate(
-                  "/ambulance-logistics"
-                )
-              }
-            >
-              <Ambulance size={20} />
-              <span>
-                Ambulance Logistics
-              </span>
-            </div>
-
-            <div
-              className="menu-item"
-              onClick={() =>
-                navigate("/resource-map")
-              }
-            >
-              <MapPinned size={20} />
-              <span>Resource Map</span>
-            </div>
-
-            <div
-              className="menu-item"
-              onClick={() =>
-                navigate("/analytics")
-              }
-            >
-              <BarChart3 size={20} />
-              <span>Analytics</span>
-            </div>
-
-            <div
-              className="menu-item"
-              onClick={() =>
-                navigate("/personnel")
-              }
-            >
-              <Users size={20} />
-              <span>Personnel</span>
-            </div>
+            </p>
 
           </div>
 
-        </div>
+          <div className="map-box">
 
-        <div className="sidebar-bottom">
+            {isLoaded && (
 
-          <div className="bottom-item">
-            <ShieldAlert size={20} />
-            <span>System Health</span>
-          </div>
+              <GoogleMap
 
-        <div
-  className="bottom-item logout-btn"
-  onClick={handleLogout}
->
-  <LogOut size={20} />
-  <span>Logout</span>
-</div>
-        </div>
+                center={{
+                  lat:
+                    hospitalLatitude,
+                  lng:
+                    hospitalLongitude,
+                }}
 
-      </aside>
+                zoom={12}
 
-      {/* MAIN */}
+                mapContainerStyle={{
+                  width:
+                    "100%",
 
-      <main className="main-content">
+                  height:
+                    "100%",
+                }}
 
-        {/* TOPBAR */}
+              >
 
-        <div className="topbar">
+                {/* HOSPITAL */}
 
-          <div className="status">
+                <Marker
 
-            <span className="green-dot"></span>
-
-            SYSTEM STABLE
-
-          </div>
-
-          <div className="nav-links">
-
-            <span className="active-link">
-              Live Map
-            </span>
-
-            <span>Unit Dispatch</span>
-
-            <span>Logistics</span>
-
-          </div>
-
-          <div className="top-actions">
-
-           <div className="notification-wrapper">
-
-  <Bell />
-
-  {unreadSOS > 0 && (
-    <span className="notification-dot"></span>
-  )}
-
-</div>
-
-            <Settings />
-
-            <HelpCircle />
-
-            <button className="alert-btn">
-              Emergency Alert
-            </button>
-
-            <img
-              src="https://i.imgur.com/HeIi0wU.png"
-              alt="profile"
-            />
-
-          </div>
-
-        </div>
-
-        {/* GRID */}
-
-        <div className="dashboard-grid">
-
-          {/* MAP */}
-
-          <div className="map-section">
-
-            <div className="map-header">
-
-              <h2>
-                Tactical Response Map
-              </h2>
-
-              <div className="map-actions">
-
-                <button>MAP</button>
-
-                <button>SAT</button>
-
-              </div>
-
-            </div>
-
-            <div className="map-box">
-
-              {isLoaded && (
-
-                <GoogleMap
-                  mapContainerStyle={{
-                    width: "100%",
-                    height: "100%",
-                  }}
-                  center={{
+                  position={{
                     lat:
-                      selectedSOS?.latitude ||
-                      pendingSOS?.latitude ||
-                      28.6139,
+                      hospitalLatitude,
 
                     lng:
-                      selectedSOS?.longitude ||
-                      pendingSOS?.longitude ||
-                      77.2090,
+                      hospitalLongitude,
                   }}
-                  zoom={14}
-                  options={{
-                    disableDefaultUI: true,
-                    zoomControl: false,
-                  }}
-                >
 
-                  {acceptedSOS.map((sos) => (
+                />
+
+                {/* PENDING */}
+
+                {pendingSOS && (
+
+                  <Marker
+
+                    position={{
+                      lat:
+                        pendingSOS.latitude,
+
+                      lng:
+                        pendingSOS.longitude,
+                    }}
+
+                  />
+
+                )}
+
+                {/* ACCEPTED */}
+
+                {acceptedSOS.map(
+                  (
+                    sos
+                  ) => (
 
                     <Marker
-                      key={sos.id}
+                      key={
+                        sos.id
+                      }
+
                       position={{
-                        lat: sos.latitude,
-                        lng: sos.longitude,
+                        lat:
+                          sos.latitude,
+
+                        lng:
+                          sos.longitude,
                       }}
+
                     />
 
-                  ))}
+                  )
+                )}
 
-                  {pendingSOS && (
+              </GoogleMap>
 
-                    <Marker
-                      position={{
-                        lat: pendingSOS.latitude,
-                        lng: pendingSOS.longitude,
-                      }}
-                    />
+            )}
 
-                  )}
+            {/* POPUP */}
 
-                </GoogleMap>
+            {pendingSOS && (
 
-              )}
+              <div className="sos-popup">
 
-              {/* FLOATING STATS */}
+                <div className="popup-top">
 
-              {ambulances.length > 0 && (
+                  <div className="alert-row">
 
-                <div className="floating-stats">
+                    <div className="alert-left">
 
-                  <div className="stat-card">
+                      <div className="alert-dot"></div>
 
-                    <p>GPS ACCURACY</p>
+                      <span>
+                        LIVE SOS ALERT
+                      </span>
 
-                    <h3>98.4%</h3>
+                    </div>
+
+                    <div className="live-chip">
+                      ACTIVE
+                    </div>
 
                   </div>
 
-                  <div className="stat-card">
+                  <h1 className="popup-title">
 
-                    <p>AVERAGE ETA</p>
+                    {
+                      pendingSOS.type
+                    }
 
-                    <h3>4.2 min</h3>
+                  </h1>
+
+                  <p className="popup-location">
+
+                    {
+                      pendingSOS.humanReadableLocation
+                    }
+
+                  </p>
+
+                </div>
+
+                <div className="popup-middle">
+
+                  <div className="popup-grid">
+
+                    <div className="popup-card">
+
+                      <p>
+                        VICTIM
+                      </p>
+
+                      <h3>
+
+                        {
+                          pendingSOS.victimName
+                        }
+
+                      </h3>
+
+                    </div>
+
+                    <div className="popup-card">
+
+                      <p>
+                        SEVERITY
+                      </p>
+
+                      <h3>
+
+                        {
+                          pendingSOS.severity
+                        }
+
+                      </h3>
+
+                    </div>
+
+                    <div className="popup-card">
+
+                      <p>
+                        BLOOD GROUP
+                      </p>
+
+                      <h3>
+
+                        {
+                          pendingSOS.bloodGroup
+                        }
+
+                      </h3>
+
+                    </div>
+
+                    <div className="popup-card">
+
+                      <p>
+                        MEDICAL HISTORY
+                      </p>
+
+                      <h3>
+
+                        {
+                          pendingSOS.medicalHistory
+                        }
+
+                      </h3>
+
+                    </div>
 
                   </div>
 
                 </div>
 
-              )}
-
-              {/* PENDING POPUP */}
-
-              {pendingSOS && (
-
-                <div className="sos-popup">
-
-                  <div className="popup-top">
-
-                    <h2>INCOMING SOS</h2>
-
-                    <span>LIVE</span>
-
-                  </div>
-
-                  <p className="sector-text">
-                    SECTOR 4 | RAPID RESPONSE
-                  </p>
-
-                  <div className="popup-content">
-
-                    <h3>
-                      {pendingSOS.type}
-                    </h3>
-
-                    <p>
-                      Severity:
-                      {" "}
-                      {pendingSOS.severity}
-                    </p>
-
-                    <p>
-                      Latitude:
-                      {" "}
-                      {pendingSOS.latitude}
-                    </p>
-
-                    <p>
-                      Longitude:
-                      {" "}
-                      {pendingSOS.longitude}
-                    </p>
-
-                  </div>
+                <div className="popup-bottom">
 
                   <div className="popup-buttons">
 
@@ -600,7 +761,9 @@ const handleLogout = async () => {
                         )
                       }
                     >
-                      ACCEPT CALL
+
+                      Accept SOS
+
                     </button>
 
                     <button
@@ -611,254 +774,225 @@ const handleLogout = async () => {
                         )
                       }
                     >
-                      REJECT
+
+                      Reject
+
                     </button>
 
                   </div>
 
                 </div>
 
-              )}
-
-              {/* MAP CONTROLS */}
-
-              <div className="map-controls">
-
-                <button>
-                  <Plus />
-                </button>
-
-                <button>
-                  <Minus />
-                </button>
-
-                <button>
-                  <LocateFixed />
-                </button>
-
               </div>
 
-            </div>
+            )}
 
           </div>
 
-          {/* RIGHT PANEL */}
+          {/* LIVE AMBULANCES */}
 
-          <div className="right-panel">
+          <div className="ambulance-section">
 
-            {/* ACCEPTED SOS */}
+            <div className="section-top">
 
-            <div className="accepted-panel">
+              <div className="tracking-left">
 
-              <div className="panel-top">
-
-                <h2>Accepted SOS</h2>
-
-                <span>
-                  {acceptedSOS.length}
-                  {" "}
-                  ACTIVE
-                </span>
-
-              </div>
-
-              <div className="sos-scroll">
-
-                {acceptedSOS.length === 0 ? (
-
-                  <div className="empty-sos">
-
-                    <h3>
-                      No Accepted SOS
-                    </h3>
-
-                    <p>
-                      Accepted emergency
-                      requests will appear
-                      here.
-                    </p>
-
-                  </div>
-
-                ) : (
-
-                  acceptedSOS.map((sos) => (
-
-                    <div
-                      className={`accepted-card ${
-                        selectedSOS?.id ===
-                        sos.id
-                          ? "selected-card"
-                          : ""
-                      }`}
-                      key={sos.id}
-                      onClick={() =>
-                        setSelectedSOS(sos)
-                      }
-                      onDoubleClick={() =>
-                        navigate(
-                          "/resource-map"
-                        )
-                      }
-                    >
-
-                      <div className="badge">
-                        ACTIVE RESPONSE
-                      </div>
-
-                      <h3>{sos.type}</h3>
-
-                      <p>
-                        Severity:
-                        {" "}
-                        {sos.severity}
-                      </p>
-
-                      <p>
-                        Distance:
-                        {" "}
-                        2.1km
-                      </p>
-
-                      <div className="sos-buttons">
-
-                        <button className="view-btn">
-                          View Details
-                        </button>
-
-                      </div>
-
-                    </div>
-
-                  ))
-
-                )}
-
-              </div>
-
-            </div>
-
-            {/* DOCTORS */}
-
-            <div className="doctor-panel">
-
-              <div className="panel-top">
+                <Ambulance />
 
                 <h2>
-                  Available Doctors
+                  Active Ambulances
                 </h2>
 
-                <span>3 ON DUTY</span>
-
               </div>
 
-              <div className="doctor-card">
+              <div className="tracking-badges">
 
-                <h3>
-                  Dr. Aditi Sharma
-                </h3>
+                <div className="available-badge">
 
-                <p>Trauma Surgeon</p>
+                  {
+                    ambulances.filter(
+                      (
+                        ambulance
+                      ) =>
+                        ambulance.status ===
+                        "available"
+                    ).length
+                  }
+                  {" "}
+                  Available
 
-              </div>
+                </div>
 
-              <div className="doctor-card">
+                <div className="active-badge">
 
-                <h3>
-                  Dr. Vikram Singh
-                </h3>
+                  {
+                    activeAmbulances.length
+                  }
+                  {" "}
+                  Active
 
-                <p>Cardiologist</p>
-
-              </div>
-
-              <div className="doctor-card">
-
-                <h3>
-                  Dr. Priya Iyer
-                </h3>
-
-                <p>Neurologist</p>
+                </div>
 
               </div>
 
             </div>
 
-          </div>
-
-        </div>
-
-        {/* AMBULANCE */}
-
-        <div className="ambulance-section">
-
-          <div className="section-top">
-
-            <h2>
-              Live Unit Tracking
-            </h2>
-
-          </div>
-
-          <div className="ambulance-grid">
-
-            {ambulances.length === 0 ? (
+            {activeAmbulances.length ===
+            0 ? (
 
               <div className="ambulance-empty">
 
                 <h3>
-                  Update Ambulance Data
+                  No Active Ambulances
                 </h3>
 
                 <p>
-                  Add ambulance logistics
-                  to activate live dispatch.
+                  Dispatch ambulance
+                  after accepting SOS.
                 </p>
 
               </div>
 
             ) : (
 
-              ambulances.map((unit) => (
+              <div className="ambulance-grid">
 
-                <div
-                  className="ambulance-card"
-                  key={unit.id}
-                >
+                {activeAmbulances.map(
+                  (
+                    ambulance
+                  ) => (
 
-                  <div className="ambulance-top">
-
-                    <h3>{unit.id}</h3>
-
-                    <span
-                      className={
-                        unit.available
-                          ? "unit-available"
-                          : "unit-active"
+                    <div
+                      className="live-unit-card"
+                      key={
+                        ambulance.id
                       }
                     >
-                      {unit.available
-                        ? "AVAILABLE"
-                        : "DISPATCHED"}
-                    </span>
 
-                  </div>
+                      <div className="live-top">
 
-                  <p>
-                    {unit.driverName}
-                  </p>
+                        <div className="driver-box">
 
-                  <h2>{unit.eta}</h2>
+                          <div className="driver-avatar">
 
-                  <div className="progress-bar">
+                            <Siren />
 
-                    <div className="progress"></div>
+                          </div>
 
-                  </div>
+                          <div>
 
-                </div>
+                            <h3>
 
-              ))
+                              {
+                                ambulance.ambulanceNumber
+                              }
+
+                            </h3>
+
+                            <p>
+
+                              {
+                                ambulance.driverName
+                              }
+
+                            </p>
+
+                            <span className="unit-phone">
+
+                              {
+                                ambulance.driverPhone
+                              }
+
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                        <div className="route-box">
+
+                          <div className="route-status">
+
+                            {
+                              ambulance.status
+                            }
+
+                          </div>
+
+                          <h2>
+
+                            {
+                              ambulance.estimatedMinutes
+                            }
+                            m
+
+                          </h2>
+
+                        </div>
+
+                      </div>
+
+                      <div className="hospital-row">
+
+                        <span>
+
+                          {
+                            hospitalName
+                          }
+
+                        </span>
+
+                        <span>
+
+                          SOS:
+                          {" "}
+                          {
+                            ambulance.assignedSOS
+                          }
+
+                        </span>
+
+                      </div>
+
+                      <div className="live-route">
+
+                        <div className="route-head">
+
+                          <span>
+                            Route Progress
+                          </span>
+
+                          <span>
+
+                            {
+                              ambulance.progress
+                            }
+                            %
+
+                          </span>
+
+                        </div>
+
+                        <div className="route-progress">
+
+                          <div
+                            className="route-fill"
+                            style={{
+                              width:
+                                `${ambulance.progress}%`,
+                            }}
+                          />
+
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                  )
+                )}
+
+              </div>
 
             )}
 
@@ -866,10 +1000,172 @@ const handleLogout = async () => {
 
         </div>
 
-      </main>
+        {/* RIGHT */}
+
+        <div className="right-panel">
+
+          <div className="accepted-panel">
+
+            <div className="panel-top">
+
+              <h2>
+                Accepted SOS
+              </h2>
+
+              <span>
+
+                {
+                  acceptedSOS.length
+                }
+                {" "}
+                Active
+
+              </span>
+
+            </div>
+
+            <div className="sos-scroll">
+
+              {acceptedSOS.map(
+                (
+                  sos
+                ) => (
+
+                  <div
+                    className={`accepted-card ${
+                      selectedSOS?.id ===
+                      sos.id
+                        ? "selected-card"
+                        : ""
+                    }`}
+                    key={sos.id}
+                    onClick={() =>
+                      setSelectedSOS(
+                        sos
+                      )
+                    }
+                  >
+
+                    <div className="accepted-top">
+
+                      <div className="response-badge">
+
+                        ACCEPTED
+
+                      </div>
+
+                      <div className="severity-chip">
+
+                        {
+                          sos.severity
+                        }
+
+                      </div>
+
+                    </div>
+
+                    <h3>
+
+                      {
+                        sos.type
+                      }
+
+                    </h3>
+
+                    <p className="accepted-location">
+
+                      {
+                        sos.humanReadableLocation
+                      }
+
+                    </p>
+
+                    <div className="accepted-meta">
+
+                      <div className="meta-box">
+
+                        <p>
+                          VICTIM
+                        </p>
+
+                        <h4>
+
+                          {
+                            sos.victimName
+                          }
+
+                        </h4>
+
+                      </div>
+
+                      <div className="meta-box">
+
+                        <p>
+                          BLOOD GROUP
+                        </p>
+
+                        <h4>
+
+                          {
+                            sos.bloodGroup
+                          }
+
+                        </h4>
+
+                      </div>
+
+                    </div>
+
+                    {sos.assignedAmbulance && (
+
+                      <div className="ambulance-mini">
+
+                        <strong>
+
+                          {
+                            sos.assignedAmbulance
+                          }
+
+                        </strong>
+
+                        <span>
+
+                          ETA:
+                          {" "}
+                          {
+                            sos.estimatedMinutes
+                          }
+                          m
+
+                        </span>
+
+                      </div>
+
+                    )}
+
+                    <button className="view-btn">
+
+                      View Full Details
+
+                    </button>
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
 
     </div>
+
   );
+
 }
 
 export default HospitalDashboard;

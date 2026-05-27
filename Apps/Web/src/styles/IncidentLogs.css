@@ -1,0 +1,332 @@
+.incident-page{
+  padding:24px;
+}
+
+.incident-top{
+  display:grid;
+
+  grid-template-columns:
+  repeat(4,1fr);
+
+  gap:20px;
+
+  margin-bottom:24px;
+}
+
+.incident-card{
+  background:white;
+
+  border-radius:24px;
+
+  padding:28px;
+
+  display:flex;
+
+  justify-content:space-between;
+
+  align-items:center;
+
+  transition:0.3s;
+}
+
+.incident-card:hover{
+  transform:translateY(-3px);
+}
+
+.incident-card p{
+  color:#6b7280;
+
+  font-size:15px;
+}
+
+.incident-card h2{
+  margin-top:12px;
+
+  font-size:42px;
+
+  color:#111827;
+}
+
+.incident-card svg{
+  color:#c30010;
+}
+
+/* TABLE */
+
+.incident-table{
+  background:white;
+
+  border-radius:30px;
+
+  overflow:hidden;
+}
+
+.table-head{
+  display:grid;
+
+  grid-template-columns:
+  0.9fr
+  1fr
+  1.2fr
+  0.8fr
+  0.8fr
+  1fr
+  1.2fr
+  1fr;
+
+  padding:24px;
+
+  background:#f8fafc;
+
+  font-weight:700;
+
+  color:#4b5563;
+}
+
+.table-row{
+  display:grid;
+
+  grid-template-columns:
+  0.9fr
+  1fr
+  1.2fr
+  0.8fr
+  0.8fr
+  1fr
+  1.2fr
+  1fr;
+
+  padding:24px;
+
+  border-top:1px solid #ececec;
+
+  align-items:center;
+
+  transition:0.25s;
+}
+
+.table-row:hover{
+  background:#fafafa;
+}
+
+.table-id strong{
+  color:#005082;
+
+  font-size:18px;
+}
+
+.incident-type{
+  display:flex;
+
+  align-items:center;
+
+  gap:10px;
+}
+
+/* BADGES */
+
+.severity-badge,
+.ai-badge,
+.status-badge{
+  padding:8px 14px;
+
+  border-radius:999px;
+
+  font-size:12px;
+
+  font-weight:700;
+
+  text-transform:capitalize;
+}
+
+.high{
+  background:#fff4e8;
+  color:#f28b00;
+}
+
+.medium{
+  background:#e8f0ff;
+  color:#2563eb;
+}
+
+.low{
+  background:#ececec;
+  color:#666;
+}
+
+.critical{
+  background:#ffe8e8;
+  color:#d60000;
+}
+
+.real{
+  background:#e7f9ee;
+  color:#179947;
+}
+
+.fake{
+  background:#ffe8e8;
+  color:#d60000;
+}
+
+.pending{
+  background:#fff4e8;
+  color:#f28b00;
+}
+
+.accepted{
+  background:#e7f9ee;
+  color:#179947;
+}
+
+.rejected{
+  background:#ffe8e8;
+  color:#d60000;
+}
+
+.dispatched{
+  background:#fff1f1;
+  color:#c30010;
+}
+
+.arrived{
+  background:#e8f7ff;
+  color:#0077cc;
+}
+
+/* LOCATION */
+
+.location-box{
+  display:flex;
+
+  align-items:flex-start;
+
+  gap:10px;
+}
+
+
+/* REJECT */
+
+
+
+/* AMBULANCE */
+
+
+
+
+/* EVIDENCE */
+
+.evidence-box{
+  display:flex;
+
+  flex-direction:column;
+
+  gap:12px;
+}
+
+.evidence-box img{
+  width:80px;
+
+  height:80px;
+
+  object-fit:cover;
+
+  border-radius:14px;
+}
+
+.evidence-box audio{
+  width:140px;
+}
+
+.no-proof{
+  display:flex;
+
+  align-items:center;
+
+  gap:8px;
+
+  color:#6b7280;
+
+  font-size:14px;
+}
+
+/* RESPONSIVE */
+
+@media(max-width:1400px){
+
+  .incident-table{
+    overflow-x:auto;
+  }
+
+  .table-head,
+  .table-row{
+    min-width:1500px;
+  }
+
+}
+
+@media(max-width:900px){
+
+  .incident-top{
+    grid-template-columns:
+    1fr 1fr;
+  }
+
+}
+
+@media(max-width:600px){
+
+  .incident-top{
+    grid-template-columns:
+    1fr;
+  }
+
+}
+
+.location-top{
+  display:flex;
+
+  align-items:center;
+
+  gap:8px;
+
+  color:#111827;
+
+  font-weight:600;
+
+  line-height:1.5;
+}
+
+.coordinates{
+  margin-top:6px;
+
+  font-size:12px;
+
+  color:#6b7280;
+}
+
+.ambulance-meta{
+  margin-top:8px;
+
+  font-size:13px;
+
+  color:#6b7280;
+}
+
+.empty-incidents{
+  padding:80px 20px;
+
+  text-align:center;
+}
+
+.empty-incidents h3{
+  font-size:28px;
+
+  color:#111827;
+}
+
+.empty-incidents p{
+  margin-top:10px;
+
+  color:#6b7280;
+}

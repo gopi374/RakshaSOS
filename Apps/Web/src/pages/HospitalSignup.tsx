@@ -1,71 +1,274 @@
 import { useNavigate } from "react-router-dom";
+
 import { useState } from "react";
+
 import "../styles/HospitalSignup.css";
+
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
 } from "firebase/auth";
 
-import { auth } from "../firebase/firebaseConfig";
+import {
+  doc,
+  setDoc,
+} from "firebase/firestore";
 
+import {
+  auth,
+  db,
+} from "../firebase/firebaseConfig";
 
 function HospitalSignup() {
-  const [email, setEmail] = useState("");
-
-const [password, setPassword] = useState("");
-
-const [confirmPassword, setConfirmPassword] = useState("");
-
-  const handleSignup = async () => {
-
-  if (!email || !password) {
-
-    alert("Please fill required fields.");
-
-    return;
-  }
-
-  if (password !== confirmPassword) {
-
-    alert("Passwords do not match.");
-
-    return;
-  }
-
-  try {
-
-    const userCredential =
-      await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-
-    await sendEmailVerification(
-      userCredential.user
-    );
-
-    alert(
-      "Verification email sent. Please verify your email."
-    );
-
-    navigate("/hospital-login");
-
-  } catch (error: any) {
-
-    alert(error.message);
-
-  }
-
-};
 
   const navigate = useNavigate();
+
+  const [hospitalName,
+    setHospitalName] =
+    useState("");
+
+  const [email,
+    setEmail] =
+    useState("");
+
+  const [password,
+    setPassword] =
+    useState("");
+
+  const [confirmPassword,
+    setConfirmPassword] =
+    useState("");
+
+  const [emergencyContact,
+    setEmergencyContact] =
+    useState("");
+
+  const [address,
+    setAddress] =
+    useState("");
+
+  const [city,
+    setCity] =
+    useState("");
+
+  const [stateName,
+    setStateName] =
+    useState("");
+
+  const [hospitalType,
+    setHospitalType] =
+    useState(
+      "Private Tertiary Hospital"
+    );
+
+  const [bedCount,
+    setBedCount] =
+    useState("");
+
+  const [loading,
+    setLoading] =
+    useState(false);
+
+  /* GET LATITUDE LONGITUDE */
+
+  const getCoordinates =
+    async (
+      fullAddress: string
+    ) => {
+
+      try {
+
+        const response =
+          await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+              fullAddress
+            )}`
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          data &&
+          data.length > 0
+        ) {
+
+          return {
+
+            latitude:
+              parseFloat(
+                data[0].lat
+              ),
+
+            longitude:
+              parseFloat(
+                data[0].lon
+              ),
+
+          };
+
+        }
+
+        return null;
+
+      } catch {
+
+        return null;
+
+      }
+
+    };
+
+  const handleSignup =
+    async () => {
+
+      if (
+        !hospitalName ||
+        !email ||
+        !password ||
+        !address ||
+        !city ||
+        !stateName ||
+        !emergencyContact
+      ) {
+
+        alert(
+          "Please fill all required fields."
+        );
+
+        return;
+
+      }
+
+      if (
+        password !==
+        confirmPassword
+      ) {
+
+        alert(
+          "Passwords do not match."
+        );
+
+        return;
+
+      }
+
+      try {
+
+        setLoading(true);
+
+        const fullAddress =
+          `${address}, ${city}, ${stateName}`;
+
+        /* GET REAL LOCATION */
+
+        const coordinates =
+          await getCoordinates(
+            fullAddress
+          );
+
+        if (
+          !coordinates
+        ) {
+
+          alert(
+            "Unable to detect hospital location. Please enter a proper address."
+          );
+
+          setLoading(false);
+
+          return;
+
+        }
+
+        const userCredential =
+          await createUserWithEmailAndPassword(
+            auth,
+            email,
+            password
+          );
+
+        /* VERIFY EMAIL */
+
+        await sendEmailVerification(
+          userCredential.user
+        );
+
+        /* SAVE HOSPITAL */
+
+        await setDoc(
+          doc(
+            db,
+            "hospitals",
+            userCredential.user.uid
+          ),
+
+          {
+            hospitalId:
+              userCredential
+                .user.uid,
+
+            hospitalName,
+
+            email,
+
+            emergencyContact,
+
+            address,
+
+            city,
+
+            state:
+              stateName,
+
+            fullAddress,
+
+            latitude:
+              coordinates.latitude,
+
+            longitude:
+              coordinates.longitude,
+
+            hospitalType,
+
+            emergencyBeds:
+              bedCount,
+
+            createdAt:
+              Date.now(),
+          }
+        );
+
+        alert(
+          "Hospital registered successfully. Verification email sent."
+        );
+
+        navigate(
+          "/hospital-login"
+        );
+
+      } catch (
+        error: any
+      ) {
+
+        alert(
+          error.message
+        );
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    };
 
   return (
 
     <div className="hospital-signup-page">
 
-      {/* Navbar */}
+      {/* NAVBAR */}
+
       <nav className="hospital-navbar">
 
         <div className="hospital-logo">
@@ -74,15 +277,21 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
         <div className="hospital-nav-links">
 
-          <span>Emergency Network</span>
+          <span>
+            Emergency Network
+          </span>
 
           <span className="active-link">
             Hospital Coordination
           </span>
 
-          <span>Police Response</span>
+          <span>
+            Police Response
+          </span>
 
-          <span>Help Desk</span>
+          <span>
+            Help Desk
+          </span>
 
         </div>
 
@@ -92,33 +301,48 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
       </nav>
 
-      {/* Main */}
+      {/* MAIN */}
+
       <div className="hospital-main-wrapper">
 
         {/* LEFT */}
+
         <div className="hospital-left">
 
-          {/* Header Card */}
+          {/* TOP */}
+
           <div className="top-info-card">
 
             <div className="medical-badge">
-              VERIFIED MEDICAL INFRASTRUCTURE ACCESS
+
+              VERIFIED MEDICAL
+              INFRASTRUCTURE ACCESS
+
             </div>
 
             <h1>
-              Hospital Emergency Network Registration
+
+              Hospital Emergency
+              Network Registration
+
             </h1>
 
             <p>
-              Register your hospital, trauma center,
-              or emergency response department into
-              the RakshaSOS real-time emergency
-              coordination system.
+
+              Register your hospital,
+              trauma center,
+              or emergency response
+              department into
+              the RakshaSOS real-time
+              emergency coordination
+              system.
+
             </p>
 
           </div>
 
-          {/* Hospital Information */}
+          {/* HOSPITAL INFO */}
+
           <div className="form-card">
 
             <h2>
@@ -127,27 +351,79 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <div className="input-grid">
 
-              <input placeholder="Hospital Name" />
-             <input
-  type="email"
-  placeholder="Official Email"
-  value={email}
-  onChange={(e) =>
-    setEmail(e.target.value)
-  }
-/>
+              <input
+                placeholder="Hospital Name"
+                value={
+                  hospitalName
+                }
+                onChange={(e) =>
+                  setHospitalName(
+                    e.target.value
+                  )
+                }
+              />
 
-              <input placeholder="Emergency Contact" />
-              <input placeholder="Address" />
+              <input
+                type="email"
+                placeholder="Official Email"
+                value={email}
+                onChange={(e) =>
+                  setEmail(
+                    e.target.value
+                  )
+                }
+              />
 
-              <input placeholder="City" />
-              <input placeholder="State" />
+              <input
+                placeholder="Emergency Contact"
+                value={
+                  emergencyContact
+                }
+                onChange={(e) =>
+                  setEmergencyContact(
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                placeholder="Hospital Address"
+                value={address}
+                onChange={(e) =>
+                  setAddress(
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                placeholder="City"
+                value={city}
+                onChange={(e) =>
+                  setCity(
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                placeholder="State"
+                value={
+                  stateName
+                }
+                onChange={(e) =>
+                  setStateName(
+                    e.target.value
+                  )
+                }
+              />
 
             </div>
 
           </div>
 
-          {/* Emergency Operations */}
+          {/* OPERATIONS */}
+
           <div className="form-card">
 
             <h2>
@@ -156,13 +432,44 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <div className="input-grid">
 
-              <select>
+              <select
+                value={
+                  hospitalType
+                }
+                onChange={(e) =>
+                  setHospitalType(
+                    e.target.value
+                  )
+                }
+              >
+
                 <option>
                   Private Tertiary Hospital
                 </option>
+
+                <option>
+                  Government Hospital
+                </option>
+
+                <option>
+                  Trauma Center
+                </option>
+
+                <option>
+                  Emergency Care Unit
+                </option>
+
               </select>
 
-              <input placeholder="Emergency Beds Count" />
+              <input
+                placeholder="Emergency Beds Count"
+                value={bedCount}
+                onChange={(e) =>
+                  setBedCount(
+                    e.target.value
+                  )
+                }
+              />
 
             </div>
 
@@ -184,7 +491,8 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
           </div>
 
-          {/* Verification */}
+          {/* DOCUMENTS */}
+
           <div className="form-card">
 
             <h2>
@@ -221,13 +529,15 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <div className="verify-note">
 
-              Verification usually takes 24–48 business hours.
+              Verification usually takes
+              24–48 business hours.
 
             </div>
 
           </div>
 
-          {/* Secure Access */}
+          {/* PASSWORD */}
+
           <div className="form-card">
 
             <h2>
@@ -236,37 +546,47 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <div className="input-grid">
 
-          <input
-  type="password"
-  placeholder="Create Admin Password"
-  value={password}
-  onChange={(e) =>
-    setPassword(e.target.value)
-  }
-/>
+              <input
+                type="password"
+                placeholder="Create Admin Password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(
+                    e.target.value
+                  )
+                }
+              />
 
-            <input
-  type="password"
-  placeholder="Confirm Password"
-  value={confirmPassword}
-  onChange={(e) =>
-    setConfirmPassword(
-      e.target.value
-    )
-  }
-/>
+              <input
+                type="password"
+                placeholder="Confirm Password"
+                value={
+                  confirmPassword
+                }
+                onChange={(e) =>
+                  setConfirmPassword(
+                    e.target.value
+                  )
+                }
+              />
 
             </div>
 
           </div>
 
-          {/* Button */}
-         <button
-  className="register-hospital-btn"
-  onClick={handleSignup}
->
+          {/* BUTTON */}
 
-            Register Hospital Network
+          <button
+            className="register-hospital-btn"
+            onClick={
+              handleSignup
+            }
+            disabled={loading}
+          >
+
+            {loading
+              ? "Creating Hospital..."
+              : "Register Hospital Network"}
 
           </button>
 
@@ -276,10 +596,14 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <span
               onClick={() =>
-                navigate("/hospital-login")
+                navigate(
+                  "/hospital-login"
+                )
               }
             >
+
               Access Hospital Dashboard
+
             </span>
 
           </div>
@@ -287,9 +611,9 @@ const [confirmPassword, setConfirmPassword] = useState("");
         </div>
 
         {/* RIGHT */}
+
         <div className="hospital-right">
 
-          {/* Preview */}
           <div className="preview-panel">
 
             <div className="preview-header">
@@ -307,7 +631,8 @@ const [confirmPassword, setConfirmPassword] = useState("");
             <div className="alert-card red">
 
               <h4>
-                Critical: Cardiac Arrest
+                Critical:
+                Cardiac Arrest
               </h4>
 
               <p>
@@ -319,7 +644,8 @@ const [confirmPassword, setConfirmPassword] = useState("");
             <div className="alert-card yellow">
 
               <h4>
-                Dispatch: Trauma Ward 4
+                Dispatch:
+                Trauma Ward 4
               </h4>
 
               <p>
@@ -333,20 +659,24 @@ const [confirmPassword, setConfirmPassword] = useState("");
               <div className="stat-box">
 
                 <span>
-                  AVAILABLE BEDS
+                  ACTIVE CASES
                 </span>
 
-                <h3>12</h3>
+                <h3>
+                  14
+                </h3>
 
               </div>
 
               <div className="stat-box">
 
                 <span>
-                  STAFF ACTIVE
+                  LIVE AMBULANCES
                 </span>
 
-                <h3>24</h3>
+                <h3>
+                  6
+                </h3>
 
               </div>
 
@@ -354,35 +684,30 @@ const [confirmPassword, setConfirmPassword] = useState("");
 
             <img
               className="dashboard-image"
-              src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop"
-              alt="dashboard"
+              src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=1200&auto=format&fit=crop"
+              alt="hospital"
             />
 
           </div>
 
-          {/* Feature Cards */}
-
           <div className="side-feature">
-            Secure Communication
+            Real-Time Ambulance Dispatch
           </div>
 
           <div className="side-feature">
-            Verified Network
+            AI Emergency Severity Detection
           </div>
 
           <div className="side-feature">
-            Real-Time SOS
-          </div>
-
-          <div className="side-feature">
-            Encrypted Patient Routing
+            Live SOS Location Tracking
           </div>
 
         </div>
 
       </div>
 
-      {/* Footer */}
+      {/* FOOTER */}
+
       <footer className="hospital-footer">
 
         <div className="footer-logo">
@@ -390,15 +715,23 @@ const [confirmPassword, setConfirmPassword] = useState("");
         </div>
 
         <p>
-          © 2024 RakshaSOS Emergency Response.
+          Emergency Coordination
+          Infrastructure
         </p>
 
         <div className="footer-links">
 
-          <span>Privacy Policy</span>
-          <span>Emergency Protocols</span>
-          <span>Contact Support</span>
-          <span>Department Directory</span>
+          <span>
+            Privacy
+          </span>
+
+          <span>
+            Terms
+          </span>
+
+          <span>
+            Contact
+          </span>
 
         </div>
 
