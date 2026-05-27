@@ -88,3 +88,4 @@ serviceAccountKey.json
 # Local development and redundant files
 test.js
 /package-lock.json
+firebase.indexes.json

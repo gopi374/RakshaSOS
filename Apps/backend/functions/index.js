@@ -6,31 +6,43 @@
 // ============================================================
 
 const functions = require("firebase-functions/v1");
+const { defineString } = require("firebase-functions/params");
 const admin     = require("firebase-admin");
 const twilio    = require("twilio");
 
 admin.initializeApp();
 const db = admin.firestore();
 
-// // Replace this:
-// const twilioClient = twilio(
-//   functions.config().twilio.sid,
-//   functions.config().twilio.auth_token
-// );
-// const TWILIO_NUMBER = functions.config().twilio.phone;
 
-// With this:
+// ============================================================
+// ENV PARAMS (Modern Firebase Config)
+// ============================================================
+
+const TWILIO_SID = defineString("TWILIO_SID");
+const TWILIO_AUTH_TOKEN = defineString("TWILIO_AUTH_TOKEN");
+const TWILIO_PHONE = defineString("TWILIO_PHONE");
+
 let twilioClient = null;
 let TWILIO_NUMBER = null;
 
 try {
-  const cfg = functions.config().twilio;
-  if (cfg?.sid) {
-    twilioClient = twilio(cfg.sid, cfg.auth_token);
-    TWILIO_NUMBER = cfg.phone;
+
+  if (TWILIO_SID.value()) {
+
+    twilioClient = twilio(
+      TWILIO_SID.value(),
+      TWILIO_AUTH_TOKEN.value()
+    );
+
+    TWILIO_NUMBER = TWILIO_PHONE.value();
+
+    console.log("[TWILIO] Client initialized ✅");
+
   }
+
 } catch (e) {
-  console.warn("[TWILIO] Config not found — SMS disabled in emulator");
+
+  console.warn("[TWILIO] Config not found — SMS disabled");
 }
 // ============================================================
 // FEATURE 1 — SOS TRIGGERED
@@ -151,6 +163,7 @@ exports.onSOSTriggered = functions.firestore
         );
 
         await Promise.all(smsPromises);
+        console.log(`[SMS] Sent to ${uniqueContacts.length} emergency contacts ✅`);
       } else {
         console.log("[SMS MOCK] Twilio client not configured — skipped emergency SMS to family/emergency contacts");
       }
@@ -222,36 +235,41 @@ exports.onSOSAccepted = functions.firestore
       const fcmToken = userSnap.data()?.fcm_token;
 
       if (fcmToken) {
-
-        await admin.messaging().send({
-          token: fcmToken,
-          notification: {
-            title: "Help is on the way! 🚑",
-            body: `${after.accepted_by_name} accepted your SOS. ETA: ~${after.ambulance_eta} min.`,
-          },
-          data: {
-            type: "sos_accepted",
-            sos_id: sosId,
-            hospital_name: after.accepted_by_name,
-            eta: String(after.ambulance_eta),
-          },
-          android: { priority: "high" },
-        });
-
-        console.log(`[FCM] Victim notified`);
+        if (fcmToken.startsWith("dummy_")) {
+          console.log(`[FCM MOCK] Would notify victim about acceptance`);
+        } else {
+          try {
+            await admin.messaging().send({
+              token: fcmToken,
+              notification: {
+                title: "Help is on the way! 🚑",
+                body: `${after.accepted_by_name} accepted your SOS. ETA: ~${after.ambulance_eta} min.`,
+              },
+              data: {
+                type: "sos_accepted",
+                sos_id: sosId,
+                hospital_name: after.accepted_by_name,
+                eta: String(after.ambulance_eta),
+              },
+              android: { priority: "high" },
+            });
+            console.log(`[FCM] Victim notified ✅`);
+          } catch (err) {
+            console.log(`[FCM] Error:`, err.message);
+          }
+        }
       }
 
 
-      // ── SMS acknowledgement to victim ─────────────────────
-      if (twilioClient) {
+      // ── SMS acknowledgement to victim ─────────────────────────
+      const userPhone = userSnap.data()?.phone_number;
 
-        const userPhone = userSnap.data()?.phone_number;
-
-        if (userPhone) {
-
-          const mapsLink =
-            `https://maps.google.com/?q=${after.last_known_lat},${after.last_known_lng}`;
-
+      if (userPhone) {
+        if (!twilioClient) {
+          console.log(`[SMS MOCK] Acknowledgement to ${userPhone}:`);
+          console.log(`  ✅ ${after.accepted_by_name} accepted your SOS`);
+          console.log(`  ETA: ~${after.ambulance_eta} minutes`);
+        } else {
           await twilioClient.messages.create({
             to: userPhone,
             from: TWILIO_NUMBER,
@@ -259,18 +277,10 @@ exports.onSOSAccepted = functions.firestore
               `✅ RakshaSOS — Help is on the way!\n` +
               `Hospital: ${after.accepted_by_name}\n` +
               `Ambulance ETA: ~${after.ambulance_eta} minutes\n` +
-              `Location: ${mapsLink}\n` +
-              `Stay calm. Do not move if seriously injured.\n` +
+              `Stay calm. Do not move if injured.\n` +
               `— RakshaSOS Emergency`,
-          });
-
-          console.log(`[SMS] Acknowledgement sent to victim ${userPhone}`);
+          }).catch((err) => console.error(`[SMS] Failed:`, err.message));
         }
-
-      } else {
-
-        console.log("[SMS MOCK] Would send acknowledgement to victim");
-
       }
 
       // ── FCM to remaining 9 hospitals (case locked) ─────────
@@ -388,7 +398,7 @@ exports.offlineSOSWebhook = functions.https.onRequest(async (req, res) => {
       accepted_by_hospital: null,
       accepted_by_name: null,
       ambulance_eta:   null,
-      start_time:      admin.firestore.FieldValue.serverTimestamp(),
+      start_time:      new Date(),
       end_time:        null,
     });
 
@@ -417,7 +427,7 @@ exports.updateLiveTracking = functions.https.onCall(async (data, context) => {
       latitude,
       longitude,
       battery_level: battery_level || null,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date(),
     });
 
     // ── Update last known location in sos_alerts ──────────────
@@ -443,7 +453,7 @@ exports.updateLiveTracking = functions.https.onCall(async (data, context) => {
         ambulance_eta:     etaMinutes,
         ambulance_lat,
         ambulance_lng,
-        eta_updated_at:    admin.firestore.FieldValue.serverTimestamp(),
+        eta_updated_at:    new Date(),
       });
 
       // FCM to victim with updated ETA
@@ -451,17 +461,26 @@ exports.updateLiveTracking = functions.https.onCall(async (data, context) => {
       const fcmToken = userSnap.data()?.fcm_token;
 
       if (fcmToken) {
-        await admin.messaging().send({
-          token: fcmToken,
-          data: {
-            type:        "eta_update",
-            sos_id,
-            eta_minutes: String(etaMinutes),
-            message:     `Ambulance arriving in ${etaMinutes} min — ${sos.accepted_by_name}`,
-          },
-          android: { priority: "high" },
-        });
-      }
+          if (fcmToken.startsWith("dummy_")) {
+            console.log(`[FCM MOCK] Would send ETA update: ${etaMinutes} min`);
+          } else {
+            try {
+              await admin.messaging().send({
+                token: fcmToken,
+                data: {
+                  type: "eta_update",
+                  sos_id,
+                  eta_minutes: String(etaMinutes),
+                  message: `Ambulance arriving in ${etaMinutes} min — ${sos.accepted_by_name}`,
+                },
+                android: { priority: "high" },
+              });
+              console.log(`[FCM] ETA sent ✅`);
+            } catch (err) {
+              console.log(`[FCM] Error:`, err.message);
+            }
+          }
+        }
 
       console.log(`[ETA] ${sos_id} → ${etaMinutes} min`);
       return { success: true, eta_minutes: etaMinutes };
@@ -506,16 +525,25 @@ exports.onSOSResolved = functions.firestore
       const fcmToken = userSnap.data()?.fcm_token;
 
       if (fcmToken) {
-        await admin.messaging().send({
-          token: fcmToken,
-          notification: {
-            title: after.status === "resolved" ? "Case Resolved ✅" : "False Alarm Marked",
-            body:  after.status === "resolved"
-              ? "Your SOS case has been resolved. Stay safe!"
-              : "SOS marked as false alarm.",
-          },
-          data: { type: "sos_resolved", sos_id: sosId, status: after.status },
-        });
+        if (fcmToken.startsWith("dummy_")) {
+          console.log(`[FCM MOCK] Would notify victim: case ${after.status}`);
+        } else {
+          try {
+            await admin.messaging().send({
+              token: fcmToken,
+              notification: {
+                title: after.status === "resolved" ? "Case Resolved ✅" : "False Alarm Marked",
+                body: after.status === "resolved"
+                  ? "Your SOS case has been resolved. Stay safe!"
+                  : "SOS marked as false alarm.",
+              },
+              data: { type: "sos_resolved", sos_id: sosId, status: after.status },
+            });
+            console.log(`[FCM] Resolution notified ✅`);
+          } catch (err) {
+            console.log(`[FCM] Error:`, err.message);
+          }
+        }
       }
 
     } catch (err) {
@@ -524,6 +552,45 @@ exports.onSOSResolved = functions.firestore
 
     return null;
   });
+
+// ============================================================
+// TEST FUNCTION — SEND REAL TWILIO SMS
+// ============================================================
+
+exports.testSMS = functions.https.onRequest(async (req, res) => {
+
+  try {
+
+    const client = twilio(
+      TWILIO_SID.value(),
+      TWILIO_AUTH_TOKEN.value()
+    );
+
+    const result = await client.messages.create({
+      to: "+917770844739", // your verified number
+      from: TWILIO_PHONE.value(),
+      body: "RakshaSOS test SMS ✅",
+    });
+
+    console.log("[TEST SMS] Sent:", result.sid);
+
+    res.send({
+      success: true,
+      sid: result.sid,
+    });
+
+  } catch (err) {
+
+    console.error("[TEST SMS ERROR]", err);
+
+    res.status(500).send({
+      success: false,
+      error: err.message,
+    });
+
+  }
+
+});
 
 
 // ============================================================
@@ -622,12 +689,18 @@ async function alertNearbyUsers(sosId, sos) {
 // ============================================================
 
 async function addTimelineEvent(sosId, eventType, details = {}) {
-  await db.collection("emergency_timeline").add({
-    sos_id:        sosId,
-    event_type:    eventType,
-    event_details: details,
-    timestamp:     admin.firestore.FieldValue.serverTimestamp(),
-  });
+  try {
+    await db.collection("emergency_timeline").add({
+      sos_id:        sosId,
+      event_type:    eventType,
+      event_details: details,
+      timestamp:     new Date(),  // Use Date instead
+      timestamp:     admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`[TIMELINE] ${eventType} logged for ${sosId}`);
+  } catch (err) {
+    console.error(`[TIMELINE] Error:`, err);
+  }
 }
 
 

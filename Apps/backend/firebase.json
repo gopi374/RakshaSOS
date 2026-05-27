@@ -10,8 +10,8 @@
     "indexes": "firestore.indexes.json"
   },
   "emulators": {
-    "functions": { "port": 5001 },
-    "firestore": { "port": 9090 },
+    "functions": { "port": 5002 },
+    "firestore": { "port": 7777 },
     "ui": { "enabled": true }
   }
 }

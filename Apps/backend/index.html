@@ -25,12 +25,12 @@
 
 <!-- Firebase Config -->
 <div class="section">
-  <b>Firebase Config</b><br>
-  <input id="apiKey"     placeholder="apiKey" />
-  <input id="projectId"  placeholder="projectId" />
-  <input id="appId"      placeholder="appId" />
+  <b>Firebase Config (Live Production)</b><br>
+  <input id="apiKey"     placeholder="apiKey" value="AIzaSyBPeMq2qvyDOwz1O3wMwQaJ6KFS7Nu-ArY"/>
+  <input id="projectId"  placeholder="projectId" value="raksha-sos"/>
+  <input id="appId"      placeholder="appId" value="1:300614452418:web:5acd9e7bfdf6f8d56fe75b"/>
   <br>
-  <button onclick="initFirebase()">🔌 Connect Firebase</button>
+  <button onclick="initFirebase()">🔌 Connect Firebase (Production)</button>
 </div>
 
 <!-- Test Buttons -->
@@ -59,7 +59,7 @@
   };
   const clearLog = () => document.getElementById("log").innerHTML = "";
 
-  // ── Init Firebase ─────────────────────────────────────────
+  // ── Init Firebase (PRODUCTION) ────────────────────────────
   function initFirebase() {
     try {
       const config = {
@@ -70,12 +70,9 @@
       if (!firebase.apps.length) firebase.initializeApp(config);
       db        = firebase.firestore();
       functions = firebase.functions();
-
-      // ── Add these 2 lines ──
-      db.useEmulator("localhost", 9090);
-      functions.useEmulator("localhost", 5001);
-
-      log("Firebase connected ✅ (local emulator)", "ok");
+      
+      log("✅ Firebase connected (PRODUCTION)", "ok");
+      log("🚀 Real Cloud Functions are now active!", "ok");
     } catch (e) {
       log("Firebase init failed: " + e.message, "err");
     }
@@ -83,61 +80,60 @@
 
   // ── 1. Insert Dummy Data ──────────────────────────────────
   async function insertDummyData() {
-  try {
-    log("Inserting dummy data...");
-    const batch = db.batch();
+    try {
+      log("Inserting dummy data...");
+      const batch = db.batch();
 
-    userId     = "test_user_gopi";
-    hospitalId = "test_hospital_citycare";
+      userId     = "test_user_gopi";
+      hospitalId = "test_hospital_citycare";
 
-    // All writes in one batch
-    batch.set(db.collection("users").doc(userId), {
-      full_name: "gopi", phone_number: "+917389600475",
-      is_verified: true, fcm_token: "dummy_fcm_gopi",
-      last_known_lat: 23.2599, last_known_lng: 77.4126,
-    });
+      batch.set(db.collection("users").doc(userId), {
+        full_name: "gopi", phone_number: "+917389600475",
+        is_verified: true, fcm_token: "dummy_fcm_gopi",
+        last_known_lat: 23.2599, last_known_lng: 77.4126,
+      });
 
-    batch.set(db.collection("medical_profiles").doc(userId), {
-      user_id: userId, blood_group: "B+",
-      known_allergies: ["Penicillin"], chronic_conditions: "Diabetes",
-    });
+      batch.set(db.collection("medical_profiles").doc(userId), {
+        user_id: userId, blood_group: "B+",
+        known_allergies: ["Penicillin"], chronic_conditions: "Diabetes",
+      });
 
-    batch.set(db.collection("hospitals").doc(hospitalId), {
-      name: "City Care Hospital", phone_number: "+917389600475",
-      latitude: 23.258, longitude: 77.410,
-      is_open_24_7: true, is_trauma_center: true,
-      total_beds: 100, available_beds: 42,
-    });
+      batch.set(db.collection("hospitals").doc(hospitalId), {
+        name: "City Care Hospital", phone_number: "+917389600475",
+        latitude: 23.258, longitude: 77.410,
+        is_open_24_7: true, is_trauma_center: true,
+        total_beds: 100, available_beds: 42,
+      });
 
-    batch.set(db.collection("police_stations").doc("test_police"), {
-      name: "MP Nagar Police Station", phone_number: "+917389600475",
-      latitude: 23.257, longitude: 77.412,
-      jurisdiction: "MP Nagar", is_active_duty: true,
-    });
+      batch.set(db.collection("police_stations").doc("test_police"), {
+        name: "MP Nagar Police Station", phone_number: "+917389600475",
+        latitude: 23.257, longitude: 77.412,
+        jurisdiction: "MP Nagar", is_active_duty: true,
+      });
 
-    batch.set(db.collection("hospital_staff").doc("test_staff"), {
-      hospital_id: hospitalId, name: "Dr. Admin",
-      fcm_token: "dummy_fcm_hospital", role: "operator",
-    });
+      batch.set(db.collection("hospital_staff").doc("test_staff"), {
+        hospital_id: hospitalId, name: "Dr. Admin",
+        fcm_token: "dummy_fcm_hospital", role: "operator",
+      });
 
-    // One single network call
-    await batch.commit();
+      await batch.commit();
 
-    // Emergency contact separately (needs auto ID)
-    await db.collection("emergency_contacts").add({
-      user_id: userId, name: "Mom", relationship: "Mother",
-      phone_number: "+917389600475", priority: "primary",
-      is_notified_on_sos: true,
-    });
+      await db.collection("emergency_contacts").add({
+        user_id: userId, name: "Mom", relationship: "Mother",
+        phone_number: "+917389600475", priority: "primary",
+        is_notified_on_sos: true,
+      });
 
-    log("Dummy data inserted ✅", "ok");
-  } catch (e) { log("Insert failed: " + e.message, "err"); }
- }
+      log("Dummy data inserted ✅", "ok");
+    } catch (e) { 
+      log("Insert failed: " + e.message, "err"); 
+    }
+  }
 
   // ── 2. Trigger SOS ───────────────────────────────────────
   async function triggerSOS() {
     try {
-      log("Triggering SOS...");
+      log("Triggering SOS on PRODUCTION...");
       const ref = await db.collection("sos_alerts").add({
         user_id: userId || "test_user_gopi",
         status: "active",
@@ -154,17 +150,19 @@
       });
       sosId = ref.id;
       log(`SOS created: ${sosId}`, "ok");
-      log("Waiting 5s for Cloud Function to process...");
+      log("⏳ Waiting 5s for Cloud Function to process...");
 
       setTimeout(async () => {
         const snap = await db.collection("sos_alerts").doc(sosId).get();
         const data = snap.data();
-        log(`Status: ${data.status}`, data.status === "active" ? "ok" : "inf");
+        log(`Status: ${data.status}`, "ok");
         log(`Hospitals notified: ${data.hospitals_notified?.length || 0}`, "ok");
         log(`Nearby users notified: ${data.nearby_users_notified?.length || 0}`, "ok");
       }, 5000);
 
-    } catch (e) { log("SOS trigger failed: " + e.message, "err"); }
+    } catch (e) { 
+      log("SOS trigger failed: " + e.message, "err"); 
+    }
   }
 
   // ── 3. Hospital Accept ────────────────────────────────────
@@ -179,8 +177,10 @@
         accepted_at: firebase.firestore.FieldValue.serverTimestamp(),
       });
       log("SOS accepted by City Care Hospital ✅", "ok");
-      log("Check Firebase Console → Functions logs for FCM sent to victim + police");
-    } catch (e) { log("Accept failed: " + e.message, "err"); }
+      log("Check Firebase Console → Functions logs for FCM + SMS");
+    } catch (e) { 
+      log("Accept failed: " + e.message, "err"); 
+    }
   }
 
   // ── 4. Update Live Tracking + ETA ────────────────────────
@@ -199,7 +199,9 @@
         ambulance_lng: 77.4200,
       });
       log(`ETA updated: ${result.data.eta_minutes} min ✅`, "ok");
-    } catch (e) { log("Tracking update failed: " + e.message, "err"); }
+    } catch (e) { 
+      log("Tracking update failed: " + e.message, "err"); 
+    }
   }
 
   // ── 5. Resolve SOS ───────────────────────────────────────
@@ -213,7 +215,9 @@
         end_time: firebase.firestore.FieldValue.serverTimestamp(),
       });
       log("SOS resolved ✅", "ok");
-    } catch (e) { log("Resolve failed: " + e.message, "err"); }
+    } catch (e) { 
+      log("Resolve failed: " + e.message, "err"); 
+    }
   }
 
   // ── Check Timeline ────────────────────────────────────────
@@ -225,12 +229,14 @@
         .where("sos_id", "==", sosId)
         .orderBy("timestamp")
         .get();
-      if (snap.empty) { log("No timeline events yet (wait for function)", "inf"); return; }
+      if (snap.empty) { log("No timeline events yet", "inf"); return; }
       snap.docs.forEach((doc) => {
         const d = doc.data();
         log(`→ ${d.event_type} | ${JSON.stringify(d.event_details)}`, "ok");
       });
-    } catch (e) { log("Timeline fetch failed: " + e.message, "err"); }
+    } catch (e) { 
+      log("Timeline fetch failed: " + e.message, "err"); 
+    }
   }
 </script>
 </body>
