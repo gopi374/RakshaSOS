@@ -1,42 +1,39 @@
+
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  collection,
   addDoc,
-  onSnapshot,
-  query,
-  where,
-  updateDoc,
+  collection,
   doc,
   getDoc,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
 } from "firebase/firestore";
-
-import {
-  db,
-  auth,
-} from "../firebase/firebaseConfig";
-
-import "../styles/AmbulanceLogistics.css";
 
 import {
   Ambulance,
   Plus,
+  Search,
+  Pencil,
+  LocateFixed,
+  Phone,
   X,
-  Siren,
-  Wrench,
-  RotateCcw,
-  MapPinned,
+  Send,
   CheckCircle2,
+  MapPin,
 } from "lucide-react";
+
+import { auth, db } from "../firebase/firebaseConfig";
+
+import "../styles/AmbulanceLogistics.css";
 
 type AmbulanceType = {
   id: string;
 
   hospitalId: string;
-
-  hospitalName: string;
-
-  hospitalAddress: string;
 
   ambulanceNumber: string;
 
@@ -46,250 +43,121 @@ type AmbulanceType = {
 
   status:
     | "available"
-    | "dispatched"
-    | "maintenance"
-    | "arrived";
+    | "on_route";
 
-  progress: number;
+  currentSOSId?: string | null;
 
-  incidentTitle: string;
+  assignedVictimName?: string | null;
 
-  dispatchTime?: number;
-
-  estimatedMinutes?: number;
-
-  victimLat?: number;
-
-  victimLng?: number;
-
-  assignedSOS?: string;
-
-  createdAt: number;
+  estimatedArrivalMinutes?: number | null;
 };
 
 type SOSDataType = {
   id: string;
 
-  victimName?: string;
+  victimName: string;
 
-  type: string;
-
-  severity?: string;
+  humanReadableLocation: string;
 
   latitude: number;
 
   longitude: number;
 
-  humanReadableLocation?: string;
+  emergencyType?: string;
 
-  status: string;
+  severity?: string;
 
-  acceptedHospitalId?: string;
-
-  acceptedHospitalName?: string;
-
-  assignedAmbulance?: string;
-
-  dispatchTime?: number;
-
-  estimatedMinutes?: number;
+  ambulanceAssigned?: boolean;
 };
 
 function AmbulanceLogistics() {
 
-  const [hospitalId,
-    setHospitalId] =
-    useState("");
+  const hospitalId =
+    auth.currentUser?.uid;
 
-  const [authReady,
-    setAuthReady] =
-    useState(false);
+  const [
+    ambulances,
+    setAmbulances,
+  ] = useState<
+    AmbulanceType[]
+  >([]);
 
-  const [hospitalName,
-    setHospitalName] =
-    useState("");
+  const [
+    sosList,
+    setSOSList,
+  ] = useState<
+    SOSDataType[]
+  >([]);
 
-  const [hospitalAddress,
-    setHospitalAddress] =
-    useState("");
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  const [hospitalLatitude,
-    setHospitalLatitude] =
-    useState(0);
+  const [
+    openAddModal,
+    setOpenAddModal,
+  ] = useState(false);
 
-  const [hospitalLongitude,
-    setHospitalLongitude] =
-    useState(0);
+  const [
+    openDispatchModal,
+    setOpenDispatchModal,
+  ] = useState(false);
 
-  const [ambulances,
-    setAmbulances] =
-    useState<
-      AmbulanceType[]
-    >([]);
+  const [
+    selectedSOS,
+    setSelectedSOS,
+  ] =
+    useState<SOSDataType | null>(
+      null
+    );
 
-  const [acceptedSOS,
-    setAcceptedSOS] =
-    useState<
-      SOSDataType[]
-    >([]);
+  const [
+    selectedAmbulance,
+    setSelectedAmbulance,
+  ] =
+    useState<AmbulanceType | null>(
+      null
+    );
 
-  const [showModal,
-    setShowModal] =
-    useState(false);
+  const [
+    formData,
+    setFormData,
+  ] = useState({
 
-  const [showDispatchModal,
-    setShowDispatchModal] =
-    useState(false);
+    ambulanceNumber: "",
 
-  const [selectedAmbulance,
-    setSelectedAmbulance] =
-    useState<
-      AmbulanceType | null
-    >(null);
+    driverName: "",
 
-  const [selectedSOS,
-    setSelectedSOS] =
-    useState<
-      SOSDataType | null
-    >(null);
+    driverPhone: "",
 
-  const [ambulanceNumber,
-    setAmbulanceNumber] =
-    useState("");
+  });
 
-  const [driverName,
-    setDriverName] =
-    useState("");
-
-  const [driverPhone,
-    setDriverPhone] =
-    useState("");
-
-  /* AUTH */
+  /* FETCH AMBULANCES */
 
   useEffect(() => {
 
-    const unsubscribe =
-      auth.onAuthStateChanged(
-        (user) => {
+    if (!hospitalId) return;
 
-          if (user) {
+    const q = query(
+      collection(
+        db,
+        "ambulances"
+      ),
 
-            setHospitalId(
-              user.uid
-            );
-
-          } else {
-
-            setHospitalId(
-              ""
-            );
-
-          }
-
-          setAuthReady(
-            true
-          );
-
-        }
-      );
-
-    return () =>
-      unsubscribe();
-
-  }, []);
-
-  /* HOSPITAL */
-
-  useEffect(() => {
-
-    const fetchHospital =
-      async () => {
-
-        if (!hospitalId)
-          return;
-
-        const hospitalRef =
-          doc(
-            db,
-            "hospitals",
-            hospitalId
-          );
-
-        const snapshot =
-          await getDoc(
-            hospitalRef
-          );
-
-        if (
-          snapshot.exists()
-        ) {
-
-          const data =
-            snapshot.data();
-
-          setHospitalName(
-            data.hospitalName ||
-            ""
-          );
-
-          setHospitalAddress(
-            data.fullAddress ||
-            ""
-          );
-
-          setHospitalLatitude(
-            data.latitude ||
-            0
-          );
-
-          setHospitalLongitude(
-            data.longitude ||
-            0
-          );
-
-        }
-
-      };
-
-    fetchHospital();
-
-  }, [hospitalId]);
-
-  /* AMBULANCES */
-
-  useEffect(() => {
-
-    if (!hospitalId)
-      return;
-
-    const ambulanceQuery =
-      query(
-
-        collection(
-          db,
-          "ambulances"
-        ),
-
-        where(
-          "hospitalId",
-          "==",
-          hospitalId
-        )
-
-      );
+      where(
+        "hospitalId",
+        "==",
+        hospitalId
+      )
+    );
 
     const unsubscribe =
       onSnapshot(
+        q,
+        (snapshot) => {
 
-        ambulanceQuery,
-
-        (
-          snapshot
-        ) => {
-
-          const firebaseData:
-            AmbulanceType[] =
+          const data =
             snapshot.docs.map(
               (
                 firebaseDoc
@@ -298,16 +166,13 @@ function AmbulanceLogistics() {
                 id:
                   firebaseDoc.id,
 
-                ...(firebaseDoc.data() as Omit<
-                  AmbulanceType,
-                  "id"
-                >),
+                ...firebaseDoc.data(),
 
               })
-            );
+            ) as AmbulanceType[];
 
           setAmbulances(
-            firebaseData
+            data
           );
 
         }
@@ -318,119 +183,56 @@ function AmbulanceLogistics() {
 
   }, [hospitalId]);
 
-  /* ACCEPTED SOS */
+  /* FETCH ACCEPTED SOS */
 
   useEffect(() => {
 
-    if (!hospitalId)
-      return;
+    if (!hospitalId) return;
 
-    const sosQuery =
-      query(
+    const q = query(
+      collection(db, "sos"),
 
-        collection(
-          db,
-          "sos"
-        ),
+      where(
+        "acceptedHospitalId",
+        "==",
+        hospitalId
+      ),
 
-        where(
-          "acceptedHospitalId",
-          "==",
-          hospitalId
-        )
-
-      );
+      where(
+        "hospitalStatus",
+        "==",
+        "accepted"
+      )
+    );
 
     const unsubscribe =
       onSnapshot(
+        q,
+        (snapshot) => {
 
-        sosQuery,
-
-        (
-          snapshot
-        ) => {
-
-          const firebaseSOS:
-            SOSDataType[] =
+          const data =
             snapshot.docs
-
               .map(
                 (
                   firebaseDoc
-                ) => {
+                ) => ({
 
-                  const data =
-                    firebaseDoc.data();
+                  id:
+                    firebaseDoc.id,
 
-                  return {
+                  ...firebaseDoc.data(),
 
-                    id:
-                      firebaseDoc.id,
-
-                    victimName:
-                      data.victimName ||
-                      "Victim",
-
-                    type:
-                      data.type ||
-                      "Emergency",
-
-                    severity:
-                      data.severity ||
-                      "medium",
-
-                    latitude:
-                      data.latitude ||
-                      0,
-
-                    longitude:
-                      data.longitude ||
-                      0,
-
-                    humanReadableLocation:
-                      data.humanReadableLocation ||
-                      "Unknown Location",
-
-                    status:
-                      data.status ||
-                      "",
-
-                    acceptedHospitalId:
-                      data.acceptedHospitalId ||
-                      "",
-
-                    acceptedHospitalName:
-                      data.acceptedHospitalName ||
-                      "",
-
-                    assignedAmbulance:
-                      data.assignedAmbulance ||
-                      "",
-
-                    dispatchTime:
-                      data.dispatchTime ||
-                      0,
-
-                    estimatedMinutes:
-                      data.estimatedMinutes ||
-                      0,
-
-                  };
-
-                }
+                })
               )
-
               .filter(
                 (
-                  sos
+                  sos: any
                 ) =>
-                  sos.status ===
-                    "accepted" &&
-                  !sos.assignedAmbulance
-              );
+                  !sos.ambulanceAssigned
+              ) as SOSDataType[];
 
-          setAcceptedSOS(
-            firebaseSOS
+          setSOSList(
+            data
           );
 
         }
@@ -440,95 +242,6 @@ function AmbulanceLogistics() {
       unsubscribe();
 
   }, [hospitalId]);
-
-  /* DISTANCE */
-
-  const calculateDistance =
-    (
-      lat1: number,
-      lon1: number,
-      lat2: number,
-      lon2: number
-    ) => {
-
-      const R = 6371;
-
-      const dLat =
-        ((lat2 - lat1) *
-          Math.PI) /
-        180;
-
-      const dLon =
-        ((lon2 - lon1) *
-          Math.PI) /
-        180;
-
-      const a =
-        Math.sin(
-          dLat / 2
-        ) *
-          Math.sin(
-            dLat / 2
-          ) +
-
-        Math.cos(
-          (lat1 *
-            Math.PI) /
-            180
-        ) *
-
-        Math.cos(
-          (lat2 *
-            Math.PI) /
-            180
-        ) *
-
-        Math.sin(
-          dLon / 2
-        ) *
-
-        Math.sin(
-          dLon / 2
-        );
-
-      const c =
-        2 *
-        Math.atan2(
-          Math.sqrt(a),
-          Math.sqrt(1 - a)
-        );
-
-      return R * c;
-
-    };
-
-  /* ETA */
-
-  const calculateETA =
-    (
-      victimLat: number,
-      victimLng: number
-    ) => {
-
-      const distance =
-        calculateDistance(
-
-          hospitalLatitude,
-          hospitalLongitude,
-
-          victimLat,
-          victimLng
-
-        );
-
-      return Math.max(
-        3,
-        Math.round(
-          distance * 3
-        )
-      );
-
-    };
 
   /* SAVE AMBULANCE */
 
@@ -536,9 +249,9 @@ function AmbulanceLogistics() {
     async () => {
 
       if (
-        !ambulanceNumber ||
-        !driverName ||
-        !driverPhone
+        !formData.ambulanceNumber ||
+        !formData.driverName ||
+        !formData.driverPhone
       ) {
 
         alert(
@@ -550,386 +263,363 @@ function AmbulanceLogistics() {
       }
 
       await addDoc(
-
         collection(
           db,
           "ambulances"
         ),
 
         {
+
           hospitalId,
 
-          hospitalName,
+          ambulanceNumber:
+            formData.ambulanceNumber,
 
-          hospitalAddress,
+          driverName:
+            formData.driverName,
 
-          ambulanceNumber,
-
-          driverName,
-
-          driverPhone,
+          driverPhone:
+            formData.driverPhone,
 
           status:
             "available",
 
-          progress: 0,
-
-          incidentTitle:
-            "",
-
           createdAt:
-            Date.now(),
+            serverTimestamp(),
+
         }
-
       );
 
-      setAmbulanceNumber(
-        ""
-      );
-
-      setDriverName("");
-
-      setDriverPhone("");
-
-      setShowModal(
+      setOpenAddModal(
         false
       );
 
-    };
+      setFormData({
 
-  /* OPEN DISPATCH */
+        ambulanceNumber: "",
 
-  const openDispatch =
-    (
-      ambulance:
-        AmbulanceType
-    ) => {
+        driverName: "",
 
-      setSelectedAmbulance(
-        ambulance
-      );
+        driverPhone: "",
 
-      setShowDispatchModal(
-        true
-      );
+      });
 
     };
 
-  /* DISPATCH */
+  /* DISPATCH SOS */
 
-  const dispatchAmbulance =
+  const dispatchSOS =
     async () => {
 
       if (
-        !selectedAmbulance ||
-        !selectedSOS
-      ) {
-
-        alert(
-          "Select SOS"
-        );
-
+        !selectedSOS ||
+        !selectedAmbulance
+      )
         return;
 
-      }
+      try {
 
-      const estimatedMinutes =
-        calculateETA(
+        const hospitalRef =
+          doc(
+            db,
+            "hospitals",
+            hospitalId!
+          );
 
-          selectedSOS.latitude,
+        const hospitalSnap =
+          await getDoc(
+            hospitalRef
+          );
 
-          selectedSOS.longitude
+        const hospitalData =
+          hospitalSnap.data();
 
-        );
+        const hospitalLat =
+          hospitalData?.latitude;
 
-      await updateDoc(
+        const hospitalLng =
+          hospitalData?.longitude;
 
-        doc(
-          db,
-          "ambulances",
-          selectedAmbulance.id
-        ),
+        let eta = 10;
 
-        {
-          status:
-            "dispatched",
+        let distanceText =
+          "Unknown";
 
-          progress: 10,
+        try {
 
-          incidentTitle:
-            selectedSOS.type,
+          const response =
+            await fetch(
 
-          dispatchTime:
-            Date.now(),
-
-          estimatedMinutes,
-
-          victimLat:
-            selectedSOS.latitude,
-
-          victimLng:
-            selectedSOS.longitude,
-
-          assignedSOS:
-            selectedSOS.id,
-        }
-
-      );
-
-      await updateDoc(
-
-        doc(
-          db,
-          "sos",
-          selectedSOS.id
-        ),
-
-        {
-          assignedAmbulance:
-            selectedAmbulance.ambulanceNumber,
-
-          acceptedHospitalId:
-            hospitalId,
-
-          acceptedHospitalName:
-            hospitalName,
-
-          ambulanceStatus:
-            "dispatched",
-
-          driverName:
-            selectedAmbulance.driverName,
-
-          driverPhone:
-            selectedAmbulance.driverPhone,
-
-          dispatchTime:
-            Date.now(),
-
-          estimatedMinutes,
-
-          progress: 10,
-        }
-
-      );
-
-      setShowDispatchModal(
-        false
-      );
-
-      setSelectedSOS(
-        null
-      );
-
-    };
-
-  /* LIVE TIMER */
-
-  useEffect(() => {
-
-    ambulances.forEach(
-      async (
-        ambulance
-      ) => {
-
-        if (
-          ambulance.status !==
-            "dispatched" ||
-          ambulance.progress >=
-            100
-        )
-          return;
-
-        setTimeout(
-          async () => {
-
-            await updateDoc(
-
-              doc(
-                db,
-                "ambulances",
-                ambulance.id
-              ),
-
-              {
-                progress:
-                  ambulance.progress +
-                  10,
-              }
+              `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${hospitalLat},${hospitalLng}&destinations=${selectedSOS.latitude},${selectedSOS.longitude}&key=${import.meta.env.VITE_GOOGLE_MAPS_API}`
 
             );
 
-          },
+          const data =
+            await response.json();
 
-          60000
+          const element =
+            data.rows[0]
+              .elements[0];
+
+          if (
+            element.status ===
+            "OK"
+          ) {
+
+            eta =
+              Math.ceil(
+                element.duration
+                  .value / 60
+              );
+
+            distanceText =
+              element.distance
+                .text;
+
+          }
+
+        } catch (
+          error
+        ) {
+
+          console.error(
+            error
+          );
+
+        }
+
+        /* UPDATE AMBULANCE */
+
+        await updateDoc(
+          doc(
+            db,
+            "ambulances",
+            selectedAmbulance.id
+          ),
+
+          {
+
+            status:
+              "on_route",
+
+            currentSOSId:
+              selectedSOS.id,
+
+            assignedVictimName:
+              selectedSOS.victimName,
+
+            estimatedArrivalMinutes:
+              eta,
+
+          }
+        );
+
+        /* UPDATE SOS */
+
+        await updateDoc(
+          doc(
+            db,
+            "sos",
+            selectedSOS.id
+          ),
+
+          {
+
+            ambulanceAssigned:
+              true,
+
+            assignedAmbulanceId:
+              selectedAmbulance.id,
+
+            assignedAmbulanceNumber:
+              selectedAmbulance.ambulanceNumber,
+
+            assignedDriverName:
+              selectedAmbulance.driverName,
+
+            assignedDriverPhone:
+              selectedAmbulance.driverPhone,
+
+            ambulanceStatus:
+              "on_route",
+
+            estimatedArrivalMinutes:
+              eta,
+
+            distanceText,
+
+            routeStartedAt:
+              Date.now(),
+
+          }
+        );
+
+        /* WHATSAPP */
+
+        const whatsappMessage =
+`
+🚑 Emergency Ambulance Dispatch
+
+Victim:
+${selectedSOS.victimName}
+
+Ambulance:
+${selectedAmbulance.ambulanceNumber}
+
+Driver:
+${selectedAmbulance.driverName}
+
+ETA:
+${eta} mins
+
+Distance:
+${distanceText}
+
+Location:
+https://maps.google.com/?q=${selectedSOS.latitude},${selectedSOS.longitude}
+`;
+
+        window.open(
+
+          `https://wa.me/?text=${encodeURIComponent(
+            whatsappMessage
+          )}`
+
+        );
+
+        setOpenDispatchModal(
+          false
+        );
+
+        setSelectedSOS(
+          null
+        );
+
+        setSelectedAmbulance(
+          null
+        );
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          error
         );
 
       }
-    );
 
-  }, [ambulances]);
+    };
 
   /* ARRIVED */
 
   const markArrived =
     async (
-      ambulanceId:
-        string
-    ) => {
-
-      await updateDoc(
-
-        doc(
-          db,
-          "ambulances",
-          ambulanceId
-        ),
-
-        {
-          status:
-            "arrived",
-
-          progress: 100,
-        }
-
-      );
-
-    };
-
-  /* RESET */
-
-  const resetAmbulance =
-    async (
-      ambulance:
-        AmbulanceType
-    ) => {
-
-      await updateDoc(
-
-        doc(
-          db,
-          "ambulances",
-          ambulance.id
-        ),
-
-        {
-          status:
-            "available",
-
-          progress: 0,
-
-          incidentTitle:
-            "",
-
-          dispatchTime:
-            null,
-
-          estimatedMinutes:
-            null,
-
-          assignedSOS:
-            null,
-        }
-
-      );
-
-    };
-
-  /* MAINTENANCE */
-
-  const maintenanceAmbulance =
-    async (
-      ambulanceId:
-        string
-    ) => {
-
-      await updateDoc(
-
-        doc(
-          db,
-          "ambulances",
-          ambulanceId
-        ),
-
-        {
-          status:
-            "maintenance",
-        }
-
-      );
-
-    };
-
-  /* SEND LOCATION */
-
-  const sendLocationToDriver =
-    (
       ambulance:
         AmbulanceType
     ) => {
 
       if (
-        !ambulance.victimLat ||
-        !ambulance.victimLng
-      ) {
+        !ambulance.currentSOSId
+      )
+        return;
 
-        alert(
-          "Victim location unavailable"
+      try {
+
+        await updateDoc(
+          doc(
+            db,
+            "ambulances",
+            ambulance.id
+          ),
+
+          {
+
+            status:
+              "available",
+
+            currentSOSId:
+              null,
+
+            assignedVictimName:
+              null,
+
+            estimatedArrivalMinutes:
+              null,
+
+          }
         );
 
-        return;
+        await updateDoc(
+          doc(
+            db,
+            "sos",
+            ambulance.currentSOSId
+          ),
+
+          {
+
+            ambulanceStatus:
+              "arrived",
+
+            arrivedAt:
+              Date.now(),
+
+          }
+        );
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          error
+        );
 
       }
 
-      const mapsLink =
-        `https://maps.google.com/?q=${ambulance.victimLat},${ambulance.victimLng}`;
-
-      const message =
-        `Emergency Dispatch%0A%0AAmbulance: ${ambulance.ambulanceNumber}%0A%0ALocation:%0A${mapsLink}`;
-
-      window.open(
-
-        `https://wa.me/91${ambulance.driverPhone}?text=${message}`
-
-      );
-
     };
 
-  const activeUnits =
+  /* FILTER */
+
+  const filteredAmbulances =
     useMemo(() => {
 
       return ambulances.filter(
-        (ambulance) =>
-          ambulance.status ===
-            "dispatched" ||
-          ambulance.status ===
-            "arrived"
+        (
+          ambulance
+        ) =>
+
+          ambulance.ambulanceNumber
+            .toLowerCase()
+            .includes(
+              search.toLowerCase()
+            )
       );
 
-    }, [ambulances]);
-
-  if (!authReady) {
-
-    return null;
-
-  }
+    }, [
+      ambulances,
+      search,
+    ]);
 
   return (
 
-    <div className="ambulance-page">
+    <div className="fleet-wrapper">
 
-      {/* HEADER */}
+      <div className="fleet-top">
 
-      <div className="fleet-header">
+        <div className="fleet-heading">
 
-        <h1>
-          Ambulance Fleet
-        </h1>
+          <h1>
+            Ambulance Fleet
+          </h1>
+
+        </div>
 
         <button
-          className="top-add-btn"
+          className="add-btn"
           onClick={() =>
-            setShowModal(
+            setOpenAddModal(
               true
             )
           }
@@ -943,329 +633,251 @@ function AmbulanceLogistics() {
 
       </div>
 
-      {/* EMPTY */}
+      <div className="search-box">
+
+        <Search size={18} />
+
+        <input
+          placeholder="Search ambulance..."
+          value={search}
+          onChange={(
+            e
+          ) =>
+            setSearch(
+              e.target.value
+            )
+          }
+        />
+
+      </div>
 
       {ambulances.length ===
-        0 && (
+      0 ? (
 
-        <div className="empty-container">
+        <div className="empty-box">
 
-          <div className="empty-card">
+          <div className="empty-icon">
 
-            <div className="empty-icon">
-
-              <Ambulance
-                size={70}
-              />
-
-            </div>
-
-            <h1>
-              No Ambulance
-              Added
-            </h1>
-
-            <p>
-
-              Add your hospital
-              ambulance fleet
-              to start dispatch
-              operations.
-
-            </p>
-
-            <button
-              className="add-btn"
-              onClick={() =>
-                setShowModal(
-                  true
-                )
-              }
-            >
-
-              <Plus size={20} />
-
-              Add Ambulance
-
-            </button>
+            <Ambulance size={70} />
 
           </div>
 
+          <h2>
+            No Ambulance Added
+          </h2>
+
+          <p>
+            Add ambulance
+            fleet to begin
+            dispatch
+            operations.
+          </p>
+
+          <button
+            onClick={() =>
+              setOpenAddModal(
+                true
+              )
+            }
+          >
+
+            <Plus size={18} />
+
+            Add Ambulance
+
+          </button>
+
         </div>
 
-      )}
-
-      {/* GRID */}
-
-      {ambulances.length >
-        0 && (
+      ) : (
 
         <div className="fleet-grid">
 
-          {ambulances.map(
+          {filteredAmbulances.map(
             (
               ambulance
-            ) => {
+            ) => (
 
-              const dispatchMinutes =
-                ambulance.dispatchTime
-                  ? Math.floor(
-                      (
-                        Date.now() -
-                        ambulance.dispatchTime
-                      ) /
-                        60000
-                    )
-                  : 0;
+              <div
+                key={
+                  ambulance.id
+                }
+                className="fleet-card"
+              >
 
-              const etaLeft =
-                ambulance.estimatedMinutes
-                  ? Math.max(
-                      ambulance.estimatedMinutes -
-                        dispatchMinutes,
-                      0
-                    )
-                  : 0;
+                <div className="fleet-card-top">
 
-              return (
+                  <div>
 
-                <div
-                  className="fleet-card"
-                  key={
-                    ambulance.id
-                  }
-                >
-
-                  <div className="fleet-top">
-
-                    <div>
-
-                      <h2>
-
-                        {
-                          ambulance.ambulanceNumber
-                        }
-
-                      </h2>
-
-                      <p>
-
-                        {
-                          ambulance.driverName
-                        }
-
-                      </p>
-
-                      <span className="hospital-name">
-
-                        {
-                          ambulance.hospitalName
-                        }
-
-                      </span>
-
-                    </div>
-
-                    <span
-                      className={`status ${ambulance.status}`}
-                    >
+                    <h3>
 
                       {
-                        ambulance.status
+                        ambulance.ambulanceNumber
                       }
 
-                    </span>
+                    </h3>
+
+                    <p>
+                      Ambulance
+                      Unit
+                    </p>
 
                   </div>
 
-                  <div className="fleet-info">
+                  <span
+                    className={`badge ${ambulance.status}`}
+                  >
 
-                    <p>
+                    {
+                      ambulance.status
+                    }
 
-                      <strong>
-                        Driver:
-                      </strong>
+                  </span>
 
-                      {" "}
+                </div>
+
+                <div className="fleet-details">
+
+                  <div>
+
+                    <span>
+                      Driver
+                    </span>
+
+                    <strong>
+
+                      {
+                        ambulance.driverName
+                      }
+
+                    </strong>
+
+                  </div>
+
+                  <div>
+
+                    <span>
+                      Phone
+                    </span>
+
+                    <strong>
 
                       {
                         ambulance.driverPhone
                       }
 
-                    </p>
-
-                    <p>
-
-                      <strong>
-                        Hospital:
-                      </strong>
-
-                      {" "}
-
-                      {
-                        ambulance.hospitalAddress
-                      }
-
-                    </p>
-
-                    {ambulance.status ===
-                      "dispatched" && (
-
-                      <>
-
-                        <p className="incident-text">
-
-                          {
-                            ambulance.incidentTitle
-                          }
-
-                        </p>
-
-                        <p>
-
-                          ETA:
-                          {" "}
-                          {
-                            etaLeft
-                          }
-                          mins
-
-                        </p>
-
-                      </>
-
-                    )}
+                    </strong>
 
                   </div>
 
-                  {(ambulance.status ===
-                    "dispatched" ||
-                    ambulance.status ===
-                      "arrived") && (
+                  {ambulance.assignedVictimName && (
 
-                    <div className="progress-wrapper">
+                    <div>
 
-                      <div
-                        className="progress-bar"
-                        style={{
-                          width:
-                            `${ambulance.progress}%`,
-                        }}
-                      />
+                      <span>
+                        Victim
+                      </span>
+
+                      <strong>
+
+                        {
+                          ambulance.assignedVictimName
+                        }
+
+                      </strong>
 
                     </div>
 
                   )}
 
-                  <div className="fleet-actions">
+                  {ambulance.estimatedArrivalMinutes && (
 
-                    {ambulance.status ===
-                      "available" && (
+                    <div>
 
-                      <button
-                        onClick={() =>
-                          openDispatch(
-                            ambulance
-                          )
+                      <span>
+                        ETA
+                      </span>
+
+                      <strong>
+
+                        {
+                          ambulance.estimatedArrivalMinutes
                         }
-                      >
+                        {" "}
+                        mins
 
-                        <Siren size={18} />
+                      </strong>
 
-                        Dispatch
+                    </div>
 
-                      </button>
-
-                    )}
-
-                    {ambulance.status ===
-                      "dispatched" && (
-
-                      <button
-                        onClick={() =>
-                          sendLocationToDriver(
-                            ambulance
-                          )
-                        }
-                      >
-
-                        <MapPinned size={18} />
-
-                        Share Location
-
-                      </button>
-
-                    )}
-
-                    {ambulance.status ===
-                      "dispatched" && (
-
-                      <button
-                        className="maintenance-btn"
-                        onClick={() =>
-                          markArrived(
-                            ambulance.id
-                          )
-                        }
-                      >
-
-                        <CheckCircle2 size={18} />
-
-                        Arrived
-
-                      </button>
-
-                    )}
-
-                    {ambulance.status ===
-                      "available" && (
-
-                      <button
-                        className="maintenance-btn"
-                        onClick={() =>
-                          maintenanceAmbulance(
-                            ambulance.id
-                          )
-                        }
-                      >
-
-                        <Wrench size={18} />
-
-                        Maintenance
-
-                      </button>
-
-                    )}
-
-                    {(ambulance.status ===
-                      "arrived" ||
-                      ambulance.status ===
-                        "maintenance") && (
-
-                      <button
-                        className="reset-btn"
-                        onClick={() =>
-                          resetAmbulance(
-                            ambulance
-                          )
-                        }
-                      >
-
-                        <RotateCcw size={18} />
-
-                        Reset
-
-                      </button>
-
-                    )}
-
-                  </div>
+                  )}
 
                 </div>
 
-              );
+                <div className="fleet-actions">
 
-            }
+                  {ambulance.status ===
+                  "available" ? (
+
+                    <button
+                      className="dispatch-btn"
+                      onClick={() => {
+
+                        setSelectedAmbulance(
+                          ambulance
+                        );
+
+                        setOpenDispatchModal(
+                          true
+                        );
+
+                      }}
+                    >
+
+                      Dispatch
+
+                    </button>
+
+                  ) : (
+
+                    <button
+                      className="route-btn"
+                      onClick={() =>
+                        markArrived(
+                          ambulance
+                        )
+                      }
+                    >
+
+                      Arrived
+
+                    </button>
+
+                  )}
+
+                  <button className="icon-btn">
+
+                    <Pencil size={18} />
+
+                  </button>
+
+                  <button className="icon-btn">
+
+                    <Phone size={18} />
+
+                  </button>
+
+                  <button className="icon-btn">
+
+                    <LocateFixed size={18} />
+
+                  </button>
+
+                </div>
+
+              </div>
+
+            )
           )}
 
         </div>
@@ -1274,85 +886,121 @@ function AmbulanceLogistics() {
 
       {/* ADD MODAL */}
 
-      {showModal && (
+      {openAddModal && (
 
         <div className="modal-overlay">
 
-          <div className="modal-box">
+          <div className="add-modal">
 
-            <div className="modal-header">
+            <div className="modal-head">
 
-              <h2>
-                Add Ambulance
-              </h2>
+              <div>
+
+                <h2>
+                  Add Ambulance
+                </h2>
+
+              </div>
 
               <button
                 onClick={() =>
-                  setShowModal(
+                  setOpenAddModal(
                     false
                   )
                 }
               >
 
-                <X />
+                <X size={20} />
 
               </button>
 
             </div>
 
-            <div className="form-grid">
+            <div className="modal-grid">
 
               <input
-                type="text"
                 placeholder="Ambulance Number"
                 value={
-                  ambulanceNumber
+                  formData.ambulanceNumber
                 }
-                onChange={(e) =>
-                  setAmbulanceNumber(
-                    e.target.value
-                  )
+                onChange={(
+                  e
+                ) =>
+                  setFormData({
+                    ...formData,
+
+                    ambulanceNumber:
+                      e.target
+                        .value,
+                  })
                 }
               />
 
               <input
-                type="text"
                 placeholder="Driver Name"
                 value={
-                  driverName
+                  formData.driverName
                 }
-                onChange={(e) =>
-                  setDriverName(
-                    e.target.value
-                  )
+                onChange={(
+                  e
+                ) =>
+                  setFormData({
+                    ...formData,
+
+                    driverName:
+                      e.target
+                        .value,
+                  })
                 }
               />
 
               <input
-                type="text"
                 placeholder="Driver Phone"
                 value={
-                  driverPhone
+                  formData.driverPhone
                 }
-                onChange={(e) =>
-                  setDriverPhone(
-                    e.target.value
-                  )
+                onChange={(
+                  e
+                ) =>
+                  setFormData({
+                    ...formData,
+
+                    driverPhone:
+                      e.target
+                        .value,
+                  })
                 }
               />
 
             </div>
 
-            <button
-              className="save-btn"
-              onClick={
-                saveAmbulance
-              }
-            >
+            <div className="modal-footer">
 
-              Save Ambulance
+              <button
+                className="cancel-btn"
+                onClick={() =>
+                  setOpenAddModal(
+                    false
+                  )
+                }
+              >
 
-            </button>
+                Cancel
+
+              </button>
+
+              <button
+                className="save-btn"
+                onClick={
+                  saveAmbulance
+                }
+              >
+
+                Save
+
+              </button>
+
+            </div>
 
           </div>
 
@@ -1362,137 +1010,157 @@ function AmbulanceLogistics() {
 
       {/* DISPATCH MODAL */}
 
-      {showDispatchModal && (
+      {openDispatchModal &&
+        selectedAmbulance && (
 
-        <div className="modal-overlay">
+          <div className="modal-overlay">
 
-          <div className="modal-box">
+            <div className="dispatch-modal">
 
-            <div className="modal-header">
+              <div className="dispatch-head">
 
-              <h2>
-                Assign SOS
-              </h2>
+                <h2>
 
-              <button
-                onClick={() =>
-                  setShowDispatchModal(
-                    false
-                  )
-                }
-              >
+                  Select SOS
 
-                <X />
+                </h2>
 
-              </button>
+                <button
+                  onClick={() =>
+                    setOpenDispatchModal(
+                      false
+                    )
+                  }
+                >
 
-            </div>
+                  <X size={20} />
 
-            <div className="sos-list">
+                </button>
 
-              {acceptedSOS.length ===
-              0 ? (
+              </div>
 
-                <p className="no-sos">
+              <div className="dispatch-body">
 
-                  No accepted SOS
-                  available.
+                <div className="incident-list">
 
-                </p>
+                  {sosList.map(
+                    (
+                      sos
+                    ) => (
 
-              ) : (
-
-                acceptedSOS.map(
-                  (
-                    sos
-                  ) => (
-
-                    <div
-                      key={sos.id}
-                      className={`sos-item ${
-                        selectedSOS?.id ===
-                        sos.id
-                          ? "selected-sos"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        setSelectedSOS(
-                          sos
-                        )
-                      }
-                    >
-
-                      <h3>
-
-                        {
-                          sos.type
-                        }
-
-                      </h3>
-
-                      <p>
-
-                        SOS ID:
-                        {" "}
-                        {
+                      <div
+                        key={
                           sos.id
                         }
-
-                      </p>
-
-                      <p>
-
-                        Victim:
-                        {" "}
-                        {
-                          sos.victimName
+                        className={`incident-card ${
+                          selectedSOS?.id ===
+                          sos.id
+                            ? "selected"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          setSelectedSOS(
+                            sos
+                          )
                         }
+                      >
 
-                      </p>
+                        <div className="incident-top">
 
-                      <p>
+                          <div>
 
-                        Location:
-                        {" "}
-                        {
-                          sos.humanReadableLocation
-                        }
+                            <h3>
 
-                      </p>
+                              {
+                                sos.emergencyType ||
+                                sos.victimName
+                              }
 
-                      <span className="severity-tag">
+                            </h3>
 
-                        {
-                          sos.severity
-                        }
+                            <p>
 
-                      </span>
+                              <MapPin size={14} />
 
-                    </div>
+                              {
+                                sos.humanReadableLocation
+                              }
 
-                  )
-                )
+                            </p>
 
-              )}
+                          </div>
+
+                          <span className="critical">
+
+                            {
+                              sos.severity ||
+                              "CRITICAL"
+                            }
+
+                          </span>
+
+                        </div>
+
+                        <div className="incident-bottom">
+
+                          <span>
+                            Active
+                            Incident
+                          </span>
+
+                          {selectedSOS?.id ===
+                            sos.id && (
+
+                            <CheckCircle2 size={18} />
+
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              </div>
+
+              <div className="dispatch-footer">
+
+                <button
+                  className="cancel-btn"
+                  onClick={() =>
+                    setOpenDispatchModal(
+                      false
+                    )
+                  }
+                >
+
+                  Cancel
+
+                </button>
+
+                <button
+                  className="assign-btn"
+                  onClick={
+                    dispatchSOS
+                  }
+                >
+
+                  <Send size={16} />
+
+                  Dispatch Ambulance
+
+                </button>
+
+              </div>
 
             </div>
-
-            <button
-              className="save-btn"
-              onClick={
-                dispatchAmbulance
-              }
-            >
-
-              Confirm Dispatch
-
-            </button>
 
           </div>
 
-        </div>
-
-      )}
+        )}
 
     </div>
 

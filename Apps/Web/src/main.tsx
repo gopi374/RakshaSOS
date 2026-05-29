@@ -1,43 +1,47 @@
 import React from "react";
-
 import ReactDOM from "react-dom/client";
 
 import {
   BrowserRouter,
   Routes,
- Route,
+  Route,
+  Navigate,
 } from "react-router-dom";
+
+/* LAYOUTS */
+
+import HospitalFixedLayout from "./layouts/HospitalFixedLayout";
+import PoliceFixedLayout from "./layouts/PoliceFixedLayout";
+
+/* MAIN PAGES */
 
 import LandingPage from "./pages/LandingPage";
 
-import PoliceLogin from "./pages/PoliceLogin";
-
+import HospitalSignup from "./pages/HospitalSignup";
 import HospitalLogin from "./pages/HospitalLogin";
 
-import PoliceDashboard from "./pages/PoliceDashboard";
-
 import PoliceSignup from "./pages/PoliceSignup";
+import PoliceLogin from "./pages/PoliceLogin";
 
-import HospitalSignup from "./pages/HospitalSignup";
+/* HOSPITAL PAGES */
 
-import HospitalDashboard from "./pages/HospitalDashboard";
-
-import ResourceMap from "./pages/ResourceMap";
-
+import HospitalDashboard from "./pages/Hospitaldashboard";
 import AmbulanceLogistics from "./pages/AmbulanceLogistics";
-
 import IncidentLogs from "./pages/IncidentLogs";
-
 import HospitalProfile from "./pages/HospitalProfile";
 
-import HospitalLayout from "./layouts/HospitalLayout";
+/* POLICE PAGES */
+
+import PoliceDashboard from "./pages/Policedashboard";
+import PoliceIncidentLogs from "./pages/PoliceIncidentLogs";
+import PoliceProfile from "./pages/PoliceProfile";
+
+/* ROOT */
 
 ReactDOM.createRoot(
-  document.getElementById("root")!
+  document.getElementById("root") as HTMLElement
 ).render(
-
   <React.StrictMode>
-
     <BrowserRouter>
 
       <Routes>
@@ -49,12 +53,19 @@ ReactDOM.createRoot(
           element={<LandingPage />}
         />
 
-        {/* POLICE */}
+        {/* HOSPITAL AUTH */}
 
         <Route
-          path="/police-login"
-          element={<PoliceLogin />}
+          path="/hospital-signup"
+          element={<HospitalSignup />}
         />
+
+        <Route
+          path="/hospital-login"
+          element={<HospitalLogin />}
+        />
+
+        {/* POLICE AUTH */}
 
         <Route
           path="/police-signup"
@@ -62,68 +73,101 @@ ReactDOM.createRoot(
         />
 
         <Route
-          path="/police-dashboard"
-          element={<PoliceDashboard />}
+          path="/police-login"
+          element={<PoliceLogin />}
         />
 
-        {/* HOSPITAL */}
-
-        <Route
-          path="/hospital-login"
-          element={<HospitalLogin />}
-        />
-
-        <Route
-          path="/hospital-signup"
-          element={<HospitalSignup />}
-        />
-
-        {/* HOSPITAL DASHBOARD */}
+        {/* HOSPITAL PANEL */}
 
         <Route
           path="/hospital-dashboard"
-          element={<HospitalLayout />}
+          element={<HospitalFixedLayout />}
         >
 
-          {/* COMMAND CENTER */}
+          {/* Dashboard */}
 
           <Route
             index
             element={<HospitalDashboard />}
           />
 
-          {/* INCIDENT LOGS */}
-
-          <Route
-            path="incident-logs"
-            element={<IncidentLogs />}
-          />
-
-          {/* RESOURCE MAP */}
-
-          <Route
-            path="resource-map"
-            element={<ResourceMap />}
-          />
-
-          {/* AMBULANCE LOGISTICS */}
+          {/* Ambulance Logistics */}
 
           <Route
             path="ambulance-logistics"
-            element={<AmbulanceLogistics />}
+            element={
+              <AmbulanceLogistics />
+            }
           />
 
-            <Route
-            path="hospital-profile"
-            element={<HospitalProfile />}
+          {/* Incident Logs */}
+
+          <Route
+            path="incident-logs"
+            element={
+              <IncidentLogs />
+            }
+          />
+
+          {/* Hospital Profile */}
+
+          <Route
+            path="profile"
+            element={
+              <HospitalProfile />
+            }
           />
 
         </Route>
 
+        {/* POLICE PANEL */}
+
+        <Route
+          path="/police-dashboard"
+          element={<PoliceFixedLayout />}
+        >
+
+          {/* Dashboard */}
+
+          <Route
+            index
+            element={<PoliceDashboard />}
+          />
+
+          {/* Incident Logs */}
+
+          <Route
+            path="incident-logs"
+            element={
+              <PoliceIncidentLogs />
+            }
+          />
+
+          {/* Police Profile */}
+
+          <Route
+            path="profile"
+            element={
+              <PoliceProfile />
+            }
+          />
+
+        </Route>
+
+        {/* FALLBACK */}
+
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to="/"
+              replace
+            />
+          }
+        />
+
       </Routes>
 
     </BrowserRouter>
-
   </React.StrictMode>
-
 );

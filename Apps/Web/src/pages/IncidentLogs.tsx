@@ -1,119 +1,72 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   collection,
   onSnapshot,
   query,
+  updateDoc,
   where,
+  doc,
 } from "firebase/firestore";
+
+import {
+  onAuthStateChanged,
+} from "firebase/auth";
 
 import {
   auth,
   db,
 } from "../firebase/firebaseConfig";
 
-import "../styles/IncidentLogs.css";
-
 import {
-  ShieldAlert,
+  Search,
   Ambulance,
-  MapPinned,
-  CheckCircle2,
   AlertTriangle,
+  MapPin,
   Clock3,
-  Image as ImageIcon,
-  AudioLines,
+  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 
-type IncidentType = {
-  id: string;
+import "../styles/IncidentLogs.css";
 
-  victimName: string;
+export default function IncidentLogs() {
 
-  victimPhone?: string;
+  const [
+    currentUser,
+    setCurrentUser,
+  ] = useState<any>(null);
 
-  type: string;
+  const [
+    incidents,
+    setIncidents,
+  ] = useState<any[]>([]);
 
-  severity: string;
-
-  status: string;
-
-  aiVerification: string;
-
-  humanReadableLocation: string;
-
-  latitude?: number;
-
-  longitude?: number;
-
-  medicalHistory?: string;
-
-  bloodGroup?: string;
-
-  acceptedHospitalId?: string;
-
-  acceptedHospitalName?: string;
-
-  assignedAmbulance?: string;
-
-  ambulanceStatus?: string;
-
-  estimatedMinutes?: number;
-
-  dispatchTime?: number;
-
-  driverName?: string;
-
-  driverPhone?: string;
-
-  imageUrl?: string;
-
-  voiceNote?: string;
-
-  createdAt: number;
-};
-
-function IncidentLogs() {
-
-  const [authReady,
-    setAuthReady] =
-    useState(false);
-
-  const [currentHospitalId,
-    setCurrentHospitalId] =
-    useState("");
-
-  const [incidents,
-    setIncidents] =
-    useState<
-      IncidentType[]
-    >([]);
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
   /* AUTH */
 
   useEffect(() => {
 
     const unsubscribe =
-      auth.onAuthStateChanged(
+      onAuthStateChanged(
+        auth,
         (user) => {
 
           if (user) {
 
-            setCurrentHospitalId(
-              user.uid
-            );
-
-          } else {
-
-            setCurrentHospitalId(
-              ""
+            setCurrentUser(
+              user
             );
 
           }
-
-          setAuthReady(
-            true
-          );
 
         }
       );
@@ -127,169 +80,47 @@ function IncidentLogs() {
 
   useEffect(() => {
 
-    if (
-      !currentHospitalId
-    )
+    if (!currentUser)
       return;
 
-    const incidentQuery =
+    const sosRef =
+      collection(
+        db,
+        "sos"
+      );
+
+    const q =
       query(
 
-        collection(
-          db,
-          "sos"
-        ),
+        sosRef,
 
         where(
           "acceptedHospitalId",
           "==",
-          currentHospitalId
+          currentUser.uid
         )
 
       );
 
     const unsubscribe =
       onSnapshot(
+        q,
+        (snapshot) => {
 
-        incidentQuery,
+          const data =
+            snapshot.docs.map(
+              (doc) => ({
 
-        (
-          snapshot
-        ) => {
+                id:
+                  doc.id,
 
-          const firebaseData:
-            IncidentType[] =
-            snapshot.docs
+                ...doc.data(),
 
-              .map(
-                (
-                  firebaseDoc
-                ) => {
-
-                  const data =
-                    firebaseDoc.data();
-
-                  return {
-
-                    id:
-                      firebaseDoc.id,
-
-                    victimName:
-                      data.victimName ||
-                      "Victim",
-
-                    victimPhone:
-                      data.victimPhone ||
-                      "",
-
-                    type:
-                      data.type ||
-                      "Emergency",
-
-                    severity:
-                      data.severity ||
-                      "medium",
-
-                    status:
-                      data.status ||
-                      "accepted",
-
-                    aiVerification:
-                      data.aiVerification ||
-                      "verified",
-
-                    humanReadableLocation:
-                      data.humanReadableLocation ||
-                      "Unknown Location",
-
-                    latitude:
-                      data.latitude ||
-                      0,
-
-                    longitude:
-                      data.longitude ||
-                      0,
-
-                    medicalHistory:
-                      data.medicalHistory ||
-                      "No medical history",
-
-                    bloodGroup:
-                      data.bloodGroup ||
-                      "Unknown",
-
-                    acceptedHospitalId:
-                      data.acceptedHospitalId ||
-                      "",
-
-                    acceptedHospitalName:
-                      data.acceptedHospitalName ||
-                      "",
-
-                    assignedAmbulance:
-                      data.assignedAmbulance ||
-                      "",
-
-                    ambulanceStatus:
-                      data.ambulanceStatus ||
-                      "",
-
-                    estimatedMinutes:
-                      data.estimatedMinutes ||
-                      0,
-
-                    dispatchTime:
-                      data.dispatchTime ||
-                      0,
-
-                    driverName:
-                      data.driverName ||
-                      "",
-
-                    driverPhone:
-                      data.driverPhone ||
-                      "",
-
-                    imageUrl:
-                      data.imageUrl ||
-                      "",
-
-                    voiceNote:
-                      data.voiceNote ||
-                      "",
-
-                    createdAt:
-                      data.createdAt ||
-                      Date.now(),
-
-                  };
-
-                }
-              )
-
-              .filter(
-                (
-                  incident
-                ) =>
-
-                  incident.status !==
-                  "pending"
-
-              )
-
-              .sort(
-                (
-                  a,
-                  b
-                ) =>
-                  (b.createdAt ||
-                    0) -
-                  (a.createdAt ||
-                    0)
-              );
+              })
+            );
 
           setIncidents(
-            firebaseData
+            data
           );
 
         }
@@ -298,180 +129,293 @@ function IncidentLogs() {
     return () =>
       unsubscribe();
 
-  }, [currentHospitalId]);
+  }, [currentUser]);
+
+  /* FILTER */
+
+  const filteredIncidents =
+    useMemo(() => {
+
+      return incidents.filter(
+        (incident) => {
+
+          const searchText =
+`
+${incident.id}
+${incident.victimName}
+${incident.address}
+${incident.type}
+`
+            .toLowerCase();
+
+          return searchText.includes(
+            search.toLowerCase()
+          );
+
+        }
+      );
+
+    }, [
+      incidents,
+      search,
+    ]);
 
   /* STATS */
 
-  const activeAmbulanceCount =
-    useMemo(() => {
-
-      return incidents.filter(
-        (
-          incident
-        ) =>
-
-          incident.assignedAmbulance &&
-          incident.ambulanceStatus ===
-            "dispatched"
-
-      ).length;
-
-    }, [incidents]);
+  const totalToday =
+    incidents.length;
 
   const criticalCount =
-    useMemo(() => {
+    incidents.filter(
+      (incident) =>
+        incident.severity ===
+        "Critical"
+    ).length;
 
-      return incidents.filter(
-        (
-          incident
-        ) =>
+  const activeAmbulances =
+    incidents.filter(
+      (incident) =>
+        incident.ambulanceStatus ===
+        "on_route"
+    ).length;
 
-          incident.severity ===
-          "critical"
+  /* STATUS */
 
-      ).length;
+  const getStatus =
+    (incident: any) => {
 
-    }, [incidents]);
+      if (
+        incident.incidentStatus ===
+        "completed"
+      ) {
 
-  const resolvedCount =
-    useMemo(() => {
+        return "resolved";
 
-      return incidents.filter(
-        (
-          incident
-        ) =>
+      }
 
-          incident.status ===
-          "completed"
+      if (
+        incident.ambulanceStatus ===
+        "arrived"
+      ) {
 
-      ).length;
+        return "on-site";
 
-    }, [incidents]);
+      }
 
-  const activeIncidentCount =
-    useMemo(() => {
+      if (
+        incident.ambulanceStatus ===
+        "on_route"
+      ) {
 
-      return incidents.filter(
-        (
-          incident
-        ) =>
+        return "dispatched";
 
-          incident.status ===
-            "accepted" ||
-          incident.status ===
-            "dispatched"
+      }
 
-      ).length;
+      if (
+        incident.hospitalStatus ===
+        "accepted"
+      ) {
 
-    }, [incidents]);
+        return "active";
 
-  if (!authReady) {
+      }
 
-    return null;
+      return "waiting";
 
-  }
+    };
+
+  /* VERIFICATION */
+
+  const getVerification =
+    (incident: any) => {
+
+      const image =
+        incident.imageUrl;
+
+      const voice =
+        incident.voiceNoteUrl;
+
+      if (
+        image &&
+        voice
+      ) {
+
+        return {
+          label:
+            "AI VERIFIED",
+
+          className:
+            "verified",
+        };
+
+      }
+
+      if (
+        image ||
+        voice
+      ) {
+
+        return {
+          label:
+            "PARTIAL",
+
+          className:
+            "partial",
+        };
+
+      }
+
+      return {
+        label:
+          "UNVERIFIED",
+
+        className:
+          "unverified",
+      };
+
+    };
+
+  /* COMPLETE */
+
+  const markCompleted =
+    async (
+      incidentId: string
+    ) => {
+
+      try {
+
+        await updateDoc(
+
+          doc(
+            db,
+            "sos",
+            incidentId
+          ),
+
+          {
+
+            incidentStatus:
+              "completed",
+
+            completedAt:
+              Date.now(),
+
+          }
+
+        );
+
+      } catch (error) {
+
+        console.error(
+          error
+        );
+
+      }
+
+    };
 
   return (
 
     <div className="incident-page">
 
-      {/* TOP STATS */}
+      {/* SEARCH */}
 
-      <div className="incident-top">
+      <div className="incident-topbar">
 
-        <div className="incident-card">
+        <div className="incident-search">
 
-          <div>
+          <Search
+            size={20}
+          />
 
-            <p>
-              Active Incidents
-            </p>
-
-            <h2>
-
-              {
-                activeIncidentCount
-              }
-
-            </h2>
-
-          </div>
-
-          <ShieldAlert
-            size={38}
+          <input
+            type="text"
+            placeholder="Search by SOS ID, victim name, or location..."
+            value={search}
+            onChange={(e) =>
+              setSearch(
+                e.target.value
+              )
+            }
           />
 
         </div>
 
-        <div className="incident-card">
+      </div>
 
-          <div>
+      {/* STATS */}
 
-            <p>
-              Active Ambulances
-            </p>
+      <div className="incident-stats">
 
-            <h2>
+        <div className="stat-card">
 
-              {
-                activeAmbulanceCount
-              }
+          <div className="stat-icon red">
 
-            </h2>
+            <AlertTriangle
+              size={24}
+            />
 
           </div>
 
-          <Ambulance
-            size={38}
-          />
+          <h4>
+            Total Incidents
+          </h4>
+
+          <h1>
+            {totalToday}
+          </h1>
+
+          <p>
+            Live hospital logs
+          </p>
 
         </div>
 
-        <div className="incident-card">
+        <div className="stat-card">
 
-          <div>
+          <div className="stat-icon yellow">
 
-            <p>
-              Critical Cases
-            </p>
-
-            <h2>
-
-              {
-                criticalCount
-              }
-
-            </h2>
+            <AlertTriangle
+              size={24}
+            />
 
           </div>
 
-          <AlertTriangle
-            size={38}
-          />
+          <h4>
+            Critical Alerts
+          </h4>
+
+          <h1>
+            {criticalCount}
+          </h1>
+
+          <p>
+            Requires immediate response
+          </p>
 
         </div>
 
-        <div className="incident-card">
+        <div className="stat-card">
 
-          <div>
+          <div className="stat-icon green">
 
-            <p>
-              Resolved Cases
-            </p>
-
-            <h2>
-
-              {
-                resolvedCount
-              }
-
-            </h2>
+            <Ambulance
+              size={24}
+            />
 
           </div>
 
-          <CheckCircle2
-            size={38}
-          />
+          <h4>
+            Active Ambulances
+          </h4>
+
+          <h1>
+            {activeAmbulances}
+          </h1>
+
+          <p>
+            Units currently on route
+          </p>
 
         </div>
 
@@ -479,94 +423,79 @@ function IncidentLogs() {
 
       {/* TABLE */}
 
-      <div className="incident-table">
+      <div className="incident-table-wrapper">
 
-        <div className="table-head">
+        <table className="incident-table">
 
-          <div>
-            SOS ID
-          </div>
+          <thead>
 
-          <div>
-            Victim
-          </div>
+            <tr>
 
-          <div>
-            Emergency
-          </div>
+              <th>
+                SOS ID
+              </th>
 
-          <div>
-            Severity
-          </div>
+              <th>
+                Victim
+              </th>
 
-          <div>
-            AI Check
-          </div>
+              <th>
+                Medical Details
+              </th>
 
-          <div>
-            Active Ambulance
-          </div>
+              <th>
+                Incident Type
+              </th>
 
-          <div>
-            Location
-          </div>
+              <th>
+                Severity
+              </th>
 
-          <div>
-            Evidence
-          </div>
+              <th>
+                Verification
+              </th>
 
-        </div>
+              <th>
+                Status
+              </th>
 
-        {incidents.length ===
-        0 ? (
+              <th>
+                Location
+              </th>
 
-          <div className="empty-incidents">
+              <th>
+                Ambulance Details
+              </th>
 
-            <h3>
-              No Incidents Found
-            </h3>
+              <th>
+                Action
+              </th>
 
-            <p>
+            </tr>
 
-              Accepted incidents
-              will appear here.
+          </thead>
 
-            </p>
+          <tbody>
 
-          </div>
+            {filteredIncidents.map(
+              (incident) => {
 
-        ) : (
+                const verification =
+                  getVerification(
+                    incident
+                  );
 
-          incidents.map(
-            (
-              incident
-            ) => {
+                return (
 
-              const dispatchMinutes =
-                incident.dispatchTime
-                  ? Math.floor(
-                      (
-                        Date.now() -
-                        incident.dispatchTime
-                      ) /
-                        60000
-                    )
-                  : 0;
+                  <tr
+                    key={
+                      incident.id
+                    }
+                  >
 
-              return (
+                    {/* SOS ID */}
 
-                <div
-                  className="table-row"
-                  key={
-                    incident.id
-                  }
-                >
-
-                  {/* ID */}
-
-                  <div className="table-id">
-
-                    <strong>
+                    <td className="sos-id">
 
                       #
                       {
@@ -576,256 +505,394 @@ function IncidentLogs() {
                         )
                       }
 
-                    </strong>
+                    </td>
 
-                    <p>
+                    {/* VICTIM */}
 
-                      <Clock3
-                        size={12}
-                      />
+                    <td>
 
-                      {" "}
+                      <div className="victim-cell">
 
-                      {
-                        new Date(
-                          incident.createdAt
-                        ).toLocaleDateString()
-                      }
-
-                    </p>
-
-                  </div>
-
-                  {/* VICTIM */}
-
-                  <div className="incident-type">
-
-                    <div>
-
-                      <strong>
-
-                        {
-                          incident.victimName
-                        }
-
-                      </strong>
-
-                      <p>
-
-                        {
-                          incident.bloodGroup
-                        }
-
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  {/* TYPE */}
-
-                  <div>
-
-                    <strong>
-
-                      {
-                        incident.type
-                      }
-
-                    </strong>
-
-                    <p>
-
-                      {
-                        incident.medicalHistory
-                      }
-
-                    </p>
-
-                  </div>
-
-                  {/* SEVERITY */}
-
-                  <div>
-
-                    <span
-                      className={`severity-badge ${incident.severity}`}
-                    >
-
-                      {
-                        incident.severity
-                      }
-
-                    </span>
-
-                  </div>
-
-                  {/* AI */}
-
-                  <div>
-
-                    <span
-                      className={`ai-badge ${
-                        incident.aiVerification ===
-                        "verified"
-                          ? "real"
-                          : "fake"
-                      }`}
-                    >
-
-                      {
-                        incident.aiVerification
-                      }
-
-                    </span>
-
-                  </div>
-
-                  {/* AMBULANCE */}
-
-                  <div>
-
-                    {incident.assignedAmbulance ? (
-
-                      <>
-
-                        <span className="status-badge accepted">
+                        <div className="victim-avatar">
 
                           {
-                            incident.assignedAmbulance
+                            incident
+                              .victimName?.[0] ||
+                            "U"
+                          }
+
+                        </div>
+
+                        <div>
+
+                          <strong>
+
+                            {
+                              incident.victimName ||
+                              "Unknown"
+                            }
+
+                          </strong>
+
+                          <p>
+
+                            {
+                              incident.gender ||
+                              "N/A"
+                            }
+
+                            {" • "}
+
+                            {
+                              incident.age ||
+                              "N/A"
+                            }
+
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    </td>
+
+                    {/* MEDICAL */}
+
+                    <td>
+
+                      <div className="medical-details">
+
+                        <span>
+
+                          <strong>
+                            Blood:
+                          </strong>
+
+                          {" "}
+
+                          {
+                            incident.bloodGroup ||
+                            "N/A"
                           }
 
                         </span>
 
-                        <p className="ambulance-meta">
+                        <span>
 
-                          ETA:
+                          <strong>
+                            Condition:
+                          </strong>
+
                           {" "}
-                          {
-                            incident.estimatedMinutes
-                          }
-                          m
-
-                        </p>
-
-                        <p className="ambulance-meta">
 
                           {
-                            incident.driverName
+                            incident.condition ||
+                            "N/A"
                           }
 
-                        </p>
+                        </span>
 
-                      </>
+                        <span>
 
-                    ) : (
+                          <strong>
+                            Pulse:
+                          </strong>
 
-                      <span className="status-badge pending">
+                          {" "}
 
-                        Waiting Dispatch
-
-                      </span>
-
-                    )}
-
-                  </div>
-
-                  {/* LOCATION */}
-
-                  <div className="location-box">
-
-                    <div className="location-top">
-
-                      <MapPinned
-                        size={14}
-                      />
-
-                      <span>
-
-                        {
-                          incident.humanReadableLocation
-                        }
-
-                      </span>
-
-                    </div>
-
-                    <p className="coordinates">
-
-                      {
-                        incident.latitude?.toFixed(
-                          4
-                        )
-                      }
-
-                      {", "}
-
-                      {
-                        incident.longitude?.toFixed(
-                          4
-                        )
-                      }
-
-                    </p>
-
-                  </div>
-
-                  {/* EVIDENCE */}
-
-                  <div className="evidence-box">
-
-                    {incident.imageUrl && (
-
-                      <img
-                        src={
-                          incident.imageUrl
-                        }
-                        alt="evidence"
-                      />
-
-                    )}
-
-                    {incident.voiceNote && (
-
-                      <audio controls>
-
-                        <source
-                          src={
-                            incident.voiceNote
+                          {
+                            incident.pulse ||
+                            "N/A"
                           }
-                        />
 
-                      </audio>
-
-                    )}
-
-                    {!incident.imageUrl &&
-                      !incident.voiceNote && (
-
-                      <div className="no-proof">
-
-                        <ImageIcon
-                          size={15}
-                        />
-
-                        <AudioLines
-                          size={15}
-                        />
-
-                        No Evidence
+                        </span>
 
                       </div>
 
-                    )}
+                    </td>
 
-                  </div>
+                    {/* INCIDENT */}
 
-                </div>
+                    <td>
 
-              );
+                      <div className="incident-type">
 
-            }
-          )
+                        <AlertTriangle
+                          size={16}
+                        />
+
+                        {
+                          incident.type ||
+                          "Emergency"
+                        }
+
+                      </div>
+
+                    </td>
+
+                    {/* SEVERITY */}
+
+                    <td>
+
+                      <span
+                        className={`
+severity-badge
+${incident.severity?.toLowerCase()}
+`}
+                      >
+
+                        {
+                          incident.severity ||
+                          "Low"
+                        }
+
+                      </span>
+
+                    </td>
+
+                    {/* VERIFICATION */}
+
+                    <td>
+
+                      <div className="verification-stack">
+
+                        <span
+                          className={`
+verification-badge
+${verification.className}
+`}
+                        >
+
+                          <ShieldCheck
+                            size={13}
+                          />
+
+                          {" "}
+
+                          {
+                            verification.label
+                          }
+
+                        </span>
+
+                        <div className="verification-meta">
+
+                          <span>
+
+                            {
+                              incident.imageUrl
+                                ? "Image Uploaded"
+                                : "No Image"
+                            }
+
+                          </span>
+
+                          <span>
+
+                            {
+                              incident.voiceNoteUrl
+                                ? "Voice Note Added"
+                                : "No Voice Note"
+                            }
+
+                          </span>
+
+                        </div>
+
+                      </div>
+
+                    </td>
+
+                    {/* STATUS */}
+
+                    <td>
+
+                      <span
+                        className={`
+status-badge
+${getStatus(
+  incident
+)}
+`}
+                      >
+
+                        {
+                          getStatus(
+                            incident
+                          )
+                        }
+
+                      </span>
+
+                    </td>
+
+                    {/* LOCATION */}
+
+                    <td>
+
+                      <div className="location-cell">
+
+                        <MapPin
+                          size={15}
+                        />
+
+                        {
+                          incident.address ||
+                          "N/A"
+                        }
+
+                      </div>
+
+                    </td>
+
+                    {/* AMBULANCE */}
+
+                    <td>
+
+                      {incident
+                        .ambulanceDetails ? (
+
+                        <div className="ambulance-cell">
+
+                          <strong>
+
+                            {
+                              incident
+                                .ambulanceDetails
+                                ?.ambulanceNumber
+                            }
+
+                          </strong>
+
+                          <p>
+
+                            {
+                              incident
+                                .ambulanceDetails
+                                ?.driverName
+                            }
+
+                          </p>
+
+                          <span>
+
+                            {
+                              incident
+                                .ambulanceDetails
+                                ?.driverPhone
+                            }
+
+                          </span>
+
+                        </div>
+
+                      ) : (
+
+                        <span className="na-text">
+
+                          Not Assigned
+
+                        </span>
+
+                      )}
+
+                    </td>
+
+                    {/* ACTION */}
+
+                    <td>
+
+                      {getStatus(
+                        incident
+                      ) !==
+                        "resolved" && (
+
+                        <select
+                          className="incident-select"
+                          onChange={(
+                            e
+                          ) => {
+
+                            if (
+                              e.target
+                                .value ===
+                              "completed"
+                            ) {
+
+                              markCompleted(
+                                incident.id
+                              );
+
+                            }
+
+                          }}
+                        >
+
+                          <option>
+
+                            Actions
+
+                          </option>
+
+                          <option value="completed">
+
+                            Mark Completed
+
+                          </option>
+
+                        </select>
+
+                      )}
+
+                      {getStatus(
+                        incident
+                      ) ===
+                        "resolved" && (
+
+                        <div className="resolved-tag">
+
+                          <CheckCircle2
+                            size={16}
+                          />
+
+                          Completed
+
+                        </div>
+
+                      )}
+
+                    </td>
+
+                  </tr>
+
+                );
+
+              }
+            )}
+
+          </tbody>
+
+        </table>
+
+        {filteredIncidents.length ===
+          0 && (
+
+          <div className="incident-empty">
+
+            <Clock3
+              size={44}
+            />
+
+            <h2>
+              No Incident Logs
+            </h2>
+
+            <p>
+              Accepted SOS logs
+              will appear here.
+            </p>
+
+          </div>
 
         )}
 
@@ -836,5 +903,3 @@ function IncidentLogs() {
   );
 
 }
-
-export default IncidentLogs;

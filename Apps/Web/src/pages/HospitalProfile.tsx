@@ -49,7 +49,7 @@ type HospitalType = {
 
   acceptingEmergency?: boolean;
 
-  facilities: {
+  facilities?: {
     emergencyBeds: boolean;
 
     icuAvailable: boolean;
@@ -412,16 +412,8 @@ function HospitalProfile() {
             ],
         };
 
-      setHospital(
-        (
-          previous
-        ) => ({
-          ...previous,
 
-          facilities:
-            updated,
-        })
-      );
+      
 
       await updateDoc(
         doc(

@@ -1,0 +1,371 @@
+.police-logs-page{
+  padding:32px;
+  min-height:100vh;
+  background:#eef6fb;
+}
+
+.logs-header{
+  margin-bottom:28px;
+}
+
+.logs-header h1{
+  font-size:54px;
+  font-weight:800;
+  color:#0b2230;
+  margin-bottom:8px;
+}
+
+.logs-header p{
+  font-size:18px;
+  color:#6b4f4b;
+}
+
+.logs-filter-bar{
+  background:white;
+  border:1px solid #e7d7d3;
+  border-radius:28px 28px 0 0;
+  padding:18px 22px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.logs-filters{
+  display:flex;
+  gap:14px;
+  align-items:center;
+}
+
+.search-box{
+  width:320px;
+  height:52px;
+  background:#eef8ff;
+  border:1px solid #d4e6f4;
+  border-radius:14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:0 16px;
+}
+
+.search-box svg{
+  color:#6b4f4b;
+}
+
+.search-box input{
+  flex:1;
+  border:none;
+  background:transparent;
+  outline:none;
+  font-size:15px;
+}
+
+.filter-select{
+  position:relative;
+}
+
+.filter-select select{
+  height:52px;
+  min-width:170px;
+  border:1px solid #d4e6f4;
+  border-radius:14px;
+  background:#eef8ff;
+  padding:0 44px 0 16px;
+  font-size:15px;
+  font-weight:600;
+  appearance:none;
+  cursor:pointer;
+}
+
+.filter-select svg{
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:none;
+}
+
+.active-counter{
+  color:#6b4f4b;
+  font-size:18px;
+  font-weight:700;
+}
+
+.logs-stats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:18px;
+  margin:22px 0;
+}
+
+.stat-card{
+  background:white;
+  border:1px solid #e7d7d3;
+  border-radius:22px;
+  padding:24px;
+}
+
+.stat-card h4{
+  color:#7b6763;
+  font-size:14px;
+  margin-bottom:12px;
+}
+
+.stat-card h2{
+  font-size:42px;
+  color:#0b2230;
+  font-weight:800;
+}
+
+.incident-table-wrapper{
+  background:white;
+  border:1px solid #e7d7d3;
+  border-radius:0 0 28px 28px;
+  overflow:hidden;
+}
+
+.incident-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.incident-table thead{
+  background:#eef6fb;
+}
+
+.incident-table th{
+  padding:24px;
+  text-align:left;
+  color:#654944;
+  font-size:14px;
+  font-weight:800;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.incident-table td{
+  padding:22px 24px;
+  border-top:1px solid #f1e4df;
+  vertical-align:middle;
+}
+
+.sos-id{
+  color:#b40011;
+  font-size:28px;
+  font-weight:800;
+}
+
+.victim-cell{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+
+.victim-avatar{
+  width:54px;
+  height:54px;
+  border-radius:50%;
+  background:#dbeeff;
+  color:#0b2230;
+  font-size:18px;
+  font-weight:800;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.victim-cell strong{
+  display:block;
+  font-size:18px;
+  color:#0b2230;
+  margin-bottom:4px;
+}
+
+.victim-cell p{
+  color:#6b4f4b;
+  font-size:14px;
+}
+
+.type-badge{
+  padding:10px 18px;
+  border-radius:999px;
+  font-size:14px;
+  font-weight:700;
+  display:inline-flex;
+  align-items:center;
+}
+
+.type-badge.accident{
+  background:#dcebf8;
+  color:#005a8d;
+}
+
+.type-badge.fire{
+  background:#ffe6e6;
+  color:#cf1d1d;
+}
+
+.type-badge.default{
+  background:#ededed;
+  color:#555;
+}
+
+.unit-cell{
+  color:#0b2230;
+  font-size:18px;
+  font-weight:600;
+  line-height:1.5;
+}
+
+.hospital-cell strong{
+  display:block;
+  color:#0b2230;
+  font-size:18px;
+  margin-bottom:4px;
+}
+
+.hospital-cell p{
+  font-size:14px;
+  color:#16a34a;
+}
+
+.support-icons{
+  display:flex;
+  gap:14px;
+  font-size:22px;
+  color:#b40011;
+}
+
+.ambulance-cell strong{
+  display:block;
+  color:#0b2230;
+  margin-bottom:4px;
+}
+
+.ambulance-cell p{
+  color:#6b4f4b;
+  font-size:14px;
+  margin-bottom:4px;
+}
+
+.ambulance-cell span{
+  color:#6b4f4b;
+  font-size:13px;
+}
+
+.status-badge{
+  padding:10px 18px;
+  border-radius:999px;
+  font-size:14px;
+  font-weight:800;
+  display:inline-flex;
+  align-items:center;
+}
+
+.status-badge.resolved{
+  color:#b40011;
+  background:#fff2f2;
+}
+
+.status-badge.accepted{
+  color:#16a34a;
+  background:#ecfdf3;
+}
+
+.status-badge.rejected{
+  color:#dc2626;
+  background:#fee2e2;
+}
+
+.status-badge.pending{
+  color:#d97706;
+  background:#fff7ed;
+}
+
+.status-badge.en-route{
+  color:#2563eb;
+  background:#dbeafe;
+}
+
+.status-badge.on-site{
+  color:#7c3aed;
+  background:#ede9fe;
+}
+
+.empty-cell{
+  text-align:center;
+  padding:80px !important;
+  color:#94a3b8;
+  font-size:18px;
+}
+
+.table-footer{
+  border-top:1px solid #f1e4df;
+  padding:22px 24px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.table-footer p{
+  color:#6b4f4b;
+  font-size:15px;
+}
+
+.pagination{
+  display:flex;
+  gap:10px;
+}
+
+.pagination button{
+  width:44px;
+  height:44px;
+  border:none;
+  border-radius:12px;
+  background:#b40011;
+  color:white;
+  font-weight:700;
+  cursor:pointer;
+}
+
+@media(max-width:1400px){
+
+  .incident-table-wrapper{
+    overflow:auto;
+  }
+
+  .incident-table{
+    min-width:1400px;
+  }
+
+}
+
+@media(max-width:900px){
+
+  .police-logs-page{
+    padding:18px;
+  }
+
+  .logs-header h1{
+    font-size:38px;
+  }
+
+  .logs-filter-bar{
+    flex-direction:column;
+    align-items:stretch;
+    gap:16px;
+  }
+
+  .logs-filters{
+    flex-direction:column;
+  }
+
+  .search-box{
+    width:100%;
+  }
+
+  .logs-stats{
+    grid-template-columns:1fr;
+  }
+
+}

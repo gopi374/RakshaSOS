@@ -119,149 +119,161 @@ function HospitalSignup() {
 
     };
 
-  const handleSignup =
-    async () => {
 
-      if (
-        !hospitalName ||
-        !email ||
-        !password ||
-        !address ||
-        !city ||
-        !stateName ||
-        !emergencyContact
-      ) {
+const handleSignup = async () => {
 
-        alert(
-          "Please fill all required fields."
+  /* ONLY EMAIL + PASSWORD REQUIRED */
+
+  if (!email || !password) {
+
+    alert(
+      "Email and password are required."
+    );
+
+    return;
+
+  }
+
+  if (
+    password !==
+    confirmPassword
+  ) {
+
+    alert(
+      "Passwords do not match."
+    );
+
+    return;
+
+  }
+
+  try {
+
+    setLoading(true);
+
+    let latitude = null;
+    let longitude = null;
+
+    let fullAddress = "";
+
+    /* OPTIONAL ADDRESS */
+
+    if (
+      address &&
+      city &&
+      stateName
+    ) {
+
+      fullAddress =
+        `${address}, ${city}, ${stateName}`;
+
+      /* TRY GETTING COORDINATES */
+
+      const coordinates =
+        await getCoordinates(
+          fullAddress
         );
 
-        return;
+      /* ONLY SAVE IF FOUND */
+
+      if (coordinates) {
+
+        latitude =
+          coordinates.latitude;
+
+        longitude =
+          coordinates.longitude;
 
       }
 
-      if (
-        password !==
-        confirmPassword
-      ) {
+    }
 
-        alert(
-          "Passwords do not match."
-        );
+    /* CREATE USER */
 
-        return;
+    const userCredential =
+      await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
 
+    /* VERIFY EMAIL */
+
+    await sendEmailVerification(
+      userCredential.user
+    );
+
+    /* SAVE HOSPITAL */
+
+    await setDoc(
+      doc(
+        db,
+        "hospitals",
+        userCredential.user.uid
+      ),
+
+      {
+        hospitalId:
+          userCredential.user.uid,
+
+        hospitalName:
+          hospitalName || "",
+
+        email,
+
+        emergencyContact:
+          emergencyContact || "",
+
+        address:
+          address || "",
+
+        city:
+          city || "",
+
+        state:
+          stateName || "",
+
+        fullAddress,
+
+        latitude,
+
+        longitude,
+
+        hospitalType,
+
+        emergencyBeds:
+          bedCount || "",
+
+        createdAt:
+          Date.now(),
       }
+    );
 
-      try {
+    alert(
+      "Hospital registered successfully."
+    );
 
-        setLoading(true);
+    navigate(
+      "/hospital-login"
+    );
 
-        const fullAddress =
-          `${address}, ${city}, ${stateName}`;
+  } catch (
+    error: any
+  ) {
 
-        /* GET REAL LOCATION */
+    alert(
+      error.message
+    );
 
-        const coordinates =
-          await getCoordinates(
-            fullAddress
-          );
+  } finally {
 
-        if (
-          !coordinates
-        ) {
+    setLoading(false);
 
-          alert(
-            "Unable to detect hospital location. Please enter a proper address."
-          );
+  }
 
-          setLoading(false);
+};
 
-          return;
 
-        }
-
-        const userCredential =
-          await createUserWithEmailAndPassword(
-            auth,
-            email,
-            password
-          );
-
-        /* VERIFY EMAIL */
-
-        await sendEmailVerification(
-          userCredential.user
-        );
-
-        /* SAVE HOSPITAL */
-
-        await setDoc(
-          doc(
-            db,
-            "hospitals",
-            userCredential.user.uid
-          ),
-
-          {
-            hospitalId:
-              userCredential
-                .user.uid,
-
-            hospitalName,
-
-            email,
-
-            emergencyContact,
-
-            address,
-
-            city,
-
-            state:
-              stateName,
-
-            fullAddress,
-
-            latitude:
-              coordinates.latitude,
-
-            longitude:
-              coordinates.longitude,
-
-            hospitalType,
-
-            emergencyBeds:
-              bedCount,
-
-            createdAt:
-              Date.now(),
-          }
-        );
-
-        alert(
-          "Hospital registered successfully. Verification email sent."
-        );
-
-        navigate(
-          "/hospital-login"
-        );
-
-      } catch (
-        error: any
-      ) {
-
-        alert(
-          error.message
-        );
-
-      } finally {
-
-        setLoading(false);
-
-      }
-
-    };
 
   return (
 
