@@ -62,14 +62,14 @@ export default function HospitalDashboard() {
   );
 
   const [
-    pendingSOS,
-    setPendingSOS,
-  ] = useState<any[]>([]);
-
-  const [
     acceptedSOS,
     setAcceptedSOS,
   ] = useState<any[]>([]);
+
+  const [
+    popupSOS,
+    setPopupSOS,
+  ] = useState<any | null>(null);
 
   const [
     ambulances,
@@ -192,28 +192,12 @@ export default function HospitalDashboard() {
     if (!currentUser)
       return;
 
-    const sosRef =
-      collection(
-        db,
-        "sos"
-      );
-
-    const pendingQuery =
-      query(
-
-        sosRef,
-
-        where(
-          "hospitalStatus",
-          "==",
-          "pending"
-        )
-
-      );
-
     const unsubscribe =
       onSnapshot(
-        pendingQuery,
+        collection(
+          db,
+          "sos"
+        ),
         (snapshot) => {
 
           const data =
@@ -223,13 +207,20 @@ export default function HospitalDashboard() {
                 id:
                   doc.id,
 
-                ...doc.data(),
+                ...(doc.data() as any),
 
               })
             );
 
-          setPendingSOS(
-            data
+          const incoming =
+            data.filter(
+              (sos) =>
+                !sos.acceptedHospitalId ||
+                sos.acceptedHospitalId === ""
+            );
+
+          setPopupSOS(
+            incoming[0] || null
           );
 
         }
@@ -247,34 +238,12 @@ export default function HospitalDashboard() {
     if (!currentUser)
       return;
 
-    const sosRef =
-      collection(
-        db,
-        "sos"
-      );
-
-    const acceptedQuery =
-      query(
-
-        sosRef,
-
-        where(
-          "hospitalStatus",
-          "==",
-          "accepted"
-        ),
-
-        where(
-          "acceptedHospitalId",
-          "==",
-          currentUser.uid
-        )
-
-      );
-
     const unsubscribe =
       onSnapshot(
-        acceptedQuery,
+        collection(
+          db,
+          "sos"
+        ),
         (snapshot) => {
 
           const data =
@@ -284,13 +253,17 @@ export default function HospitalDashboard() {
                 id:
                   doc.id,
 
-                ...doc.data(),
+                ...(doc.data() as any),
 
               })
             );
 
           setAcceptedSOS(
-            data
+            data.filter(
+              (sos) =>
+                sos.acceptedHospitalId ===
+                currentUser.uid
+            )
           );
 
         }
@@ -388,6 +361,8 @@ export default function HospitalDashboard() {
 
         );
 
+        setPopupSOS(null);
+
       } catch (error) {
 
         console.error(
@@ -423,6 +398,8 @@ export default function HospitalDashboard() {
           }
 
         );
+
+        setPopupSOS(null);
 
       } catch (error) {
 
@@ -497,8 +474,7 @@ export default function HospitalDashboard() {
 
       {/* SOS POPUP */}
 
-      {pendingSOS.length >
-        0 && (
+      {popupSOS && (
 
         <div className="sos-modal-overlay">
 
@@ -533,8 +509,7 @@ export default function HospitalDashboard() {
               <h2>
 
                 {
-                  pendingSOS[0]
-                    .type ||
+                  popupSOS.type ||
                   "Emergency"
                 }
 
@@ -546,8 +521,7 @@ export default function HospitalDashboard() {
                 {" "}
 
                 {
-                  pendingSOS[0]
-                    .address ||
+                  popupSOS.address ||
                   "N/A"
                 }
 
@@ -561,8 +535,7 @@ export default function HospitalDashboard() {
                 className="accept-btn"
                 onClick={() =>
                   acceptSOS(
-                    pendingSOS[0]
-                      .id
+                    popupSOS.id
                   )
                 }
               >
@@ -575,8 +548,7 @@ export default function HospitalDashboard() {
                 className="reject-btn"
                 onClick={() =>
                   rejectSOS(
-                    pendingSOS[0]
-                      .id
+                    popupSOS.id
                   )
                 }
               >

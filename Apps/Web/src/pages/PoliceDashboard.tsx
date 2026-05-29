@@ -22,8 +22,6 @@ import {
 import {
   AlertTriangle,
   Shield,
-  Ambulance,
-  Flame,
   Plus,
   Phone,
   MapPinned,
@@ -79,6 +77,8 @@ interface SOSData {
 
   status: string;
 
+  acceptedHospitalId?: string;
+
   acceptedPoliceStationId?: string;
 
   acceptedPoliceStationName?: string;
@@ -86,6 +86,18 @@ interface SOSData {
   acceptedHospitalName?: string;
 
   assignedAmbulance?: string;
+
+  assignedAmbulanceId?: string;
+
+  assignedAmbulanceNumber?: string;
+
+  assignedDriverName?: string;
+
+  assignedDriverPhone?: string;
+
+  ambulanceStatus?: string;
+
+  estimatedArrivalMinutes?: number;
 
   fireStatus?: string;
 
@@ -114,24 +126,6 @@ interface PoliceUnit {
   longitude?: number;
 
   assignedSOS?: string;
-}
-
-interface AmbulanceData {
-  id: string;
-
-  ambulanceNumber: string;
-
-  hospitalName: string;
-
-  driverName: string;
-
-  driverPhone: string;
-
-  status: string;
-
-  victimLat?: number;
-
-  victimLng?: number;
 }
 
 interface FireDispatch {
@@ -170,14 +164,6 @@ function PoliceDashboard() {
     setPoliceUnits,
   ] = useState<
     PoliceUnit[]
-  >([]);
-
-  const [
-    ambulances,
-
-    setAmbulances,
-  ] = useState<
-    AmbulanceData[]
   >([]);
 
   const [
@@ -229,6 +215,13 @@ function PoliceDashboard() {
 
   const policeStationId =
     currentUser?.uid;
+
+  const ambulanceDispatches =
+    sosList.filter(
+      (sos) =>
+        sos.assignedAmbulanceNumber ||
+        sos.ambulanceStatus
+    );
 
   /* FETCH POLICE STATION */
 
@@ -311,41 +304,27 @@ function PoliceDashboard() {
 
           const filtered =
             data.filter(
-              (
-                sos
-              ) => {
-
-                return (
-                  sos.status ===
-                    "pending" ||
-
-                  sos.acceptedPoliceStationId ===
-                    policeStationId
-                );
-              }
+              (sos) =>
+                !sos.acceptedPoliceStationId ||
+                sos.acceptedPoliceStationId === "" ||
+                sos.acceptedPoliceStationId ===
+                  policeStationId
             );
 
           setSOSList(
             filtered
           );
 
-          const pendingSOS =
+          const incomingSOS =
             filtered.find(
-              (
-                sos
-              ) =>
-                sos.status ===
-                "pending"
+              (sos) =>
+                !sos.acceptedPoliceStationId ||
+                sos.acceptedPoliceStationId === ""
             );
 
-          if (
-            pendingSOS
-          ) {
-
-            setPopupSOS(
-              pendingSOS
-            );
-          }
+          setPopupSOS(
+            incomingSOS || null
+          );
 
         }
       );
@@ -413,60 +392,6 @@ function PoliceDashboard() {
       unsubscribe();
 
   }, [policeStationId]);
-
-  /* AMBULANCES */
-
-  useEffect(() => {
-
-    const q = query(
-      collection(
-        db,
-        "ambulances"
-      ),
-
-      where(
-        "status",
-        "==",
-        "dispatched"
-      )
-    );
-
-    const unsubscribe =
-      onSnapshot(
-        q,
-
-        (
-          snapshot
-        ) => {
-
-          const data =
-            snapshot.docs.map(
-              (
-                firebaseDoc
-              ) => ({
-
-                id:
-                  firebaseDoc.id,
-
-                ...(firebaseDoc.data() as Omit<
-                  AmbulanceData,
-                  "id"
-                >),
-
-              })
-            );
-
-          setAmbulances(
-            data
-          );
-
-        }
-      );
-
-    return () =>
-      unsubscribe();
-
-  }, []);
 
   /* FIRE */
 
@@ -541,9 +466,7 @@ function PoliceDashboard() {
         }
       );
 
-      setPopupSOS(
-        null
-      );
+      setPopupSOS(null);
 
     };
 
@@ -567,9 +490,7 @@ function PoliceDashboard() {
         }
       );
 
-      setPopupSOS(
-        null
-      );
+      setPopupSOS(null);
 
     };
 
@@ -724,7 +645,7 @@ function PoliceDashboard() {
 
           <h2>
             {
-              ambulances.length
+              ambulanceDispatches.length
             }
 
           </h2>
@@ -991,54 +912,44 @@ function PoliceDashboard() {
 
             </div>
 
-            {ambulances.map(
-              (
-                ambulance
-              ) => (
-
-                <div
-                  key={
-                    ambulance.id
-                  }
-                  className="unit-card"
-                >
-
-                  <div>
-
-                    <h3>
-
-                      {
-                        ambulance.ambulanceNumber
-                      }
-
-                    </h3>
-
-                    <p>
-
-                      {
-                        ambulance.hospitalName
-                      }
-
-                    </p>
-
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      callNumber(
-                        ambulance.driverPhone
-                      )
-                    }
+            {ambulanceDispatches.length ===
+            0 ? (
+              <p className="empty-text">
+                No ambulance dispatch
+                updates yet
+              </p>
+            ) : (
+              ambulanceDispatches.map(
+                (sos) => (
+                  <div
+                    key={sos.id}
+                    className="unit-card"
                   >
+                    <div>
+                      <h3>
+                        {sos.assignedAmbulanceNumber ||
+                          "Ambulance"}
+                      </h3>
+                      <p>
+                        {sos.assignedDriverName ||
+                          sos.victimName ||
+                          "Dispatch update"}
+                      </p>
+                    </div>
 
-                    <Phone size={16} />
-
-                    Call
-
-                  </button>
-
-                </div>
-
+                    <button
+                      onClick={() =>
+                        callNumber(
+                          sos.assignedDriverPhone ||
+                            ""
+                        )
+                      }
+                    >
+                      <Phone size={16} />
+                      Call
+                    </button>
+                  </div>
+                )
               )
             )}
 

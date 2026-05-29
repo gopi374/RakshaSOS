@@ -196,12 +196,6 @@ function AmbulanceLogistics() {
         "acceptedHospitalId",
         "==",
         hospitalId
-      ),
-
-      where(
-        "hospitalStatus",
-        "==",
-        "accepted"
       )
     );
 
