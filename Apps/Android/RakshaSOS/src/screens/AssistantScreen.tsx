@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   AlertCircle
 } from 'lucide-react-native';
+import { getRakshaSafetyReply, GroqChatMessage } from '../services/groqAssistant';
 
 interface Message {
   id: string;
@@ -46,8 +47,23 @@ export default function AssistantScreen({ navigation }: any) {
     "Check local police station contact info",
   ];
 
-  const handleSend = (textToSend: string) => {
+  const buildGroqMessages = (nextUserText: string): GroqChatMessage[] => [
+    ...messages
+      .filter((message) => message.id !== '1')
+      .slice(-8)
+      .map((message): GroqChatMessage => ({
+        role: message.sender === 'user' ? 'user' : 'assistant',
+        content: message.text,
+      })),
+    {
+      role: 'user',
+      content: nextUserText,
+    },
+  ];
+
+  const handleSend = async (textToSend: string) => {
     if (!textToSend.trim()) return;
+    if (isTyping) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -60,19 +76,8 @@ export default function AssistantScreen({ navigation }: any) {
     setInputText('');
     setIsTyping(true);
 
-    // Simulated AI response
-    setTimeout(() => {
-      let reply = "I am processing your query. Please stay in well-lit public zones. If you feel immediate danger, press the main red SOS button or dial 112.";
-
-      const lowerText = textToSend.toLowerCase();
-      if (lowerText.includes('alone') || lowerText.includes('night') || lowerText.includes('walking')) {
-        reply = "When walking alone: 1. Keep your phone in your hand. 2. Turn on live audio broadcasting. 3. Avoid wearing headphones so you remain fully alert of your surroundings. 4. Walk against traffic so cars cannot approach you from behind.";
-      } else if (lowerText.includes('tailgating') || lowerText.includes('following') || lowerText.includes('follow')) {
-        reply = "If you suspect someone is following you: 1. Cross the street immediately. 2. Head towards a crowded commercial area (shop, gas station, hotel). 3. Simulate a fake call using the Women Safety tab. 4. Do not head home directly if it leads down unlit alleyways.";   
-      } else if (lowerText.includes('police') || lowerText.includes('station')) {
-        reply = "The nearest police station is Sector 4 Central Police HQ (1.4 km away). Emergency desk phone: +91 98765 00100. Let me know if you would like me to trigger directions on your map.";
-      }
-
+    try {
+      const reply = await getRakshaSafetyReply(buildGroqMessages(textToSend));
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
@@ -81,8 +86,21 @@ export default function AssistantScreen({ navigation }: any) {
       };
 
       setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      const fallbackMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        sender: 'bot',
+        text:
+          error instanceof Error
+            ? `I could not reach Raksha Safety AI: ${error.message}`
+            : 'I could not reach Raksha Safety AI right now. If this is urgent, trigger SOS or call 112.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setMessages(prev => [...prev, fallbackMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   useEffect(() => {
@@ -190,8 +208,9 @@ export default function AssistantScreen({ navigation }: any) {
           />
 
           <TouchableOpacity
-            style={styles.sendButton}
+            style={[styles.sendButton, isTyping && styles.sendButtonDisabled]}
             onPress={() => handleSend(inputText)}
+            disabled={isTyping}
           >
             <Send size={18} color="#FFF" />
           </TouchableOpacity>
@@ -353,5 +372,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#ac2b2e',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#c88d8f',
   },
 });

@@ -11,7 +11,31 @@ import {
     Animated,
     PanResponder,
     Vibration,
+    Modal,
+    TextInput,
+    Image,
+    ActivityIndicator,
 } from 'react-native';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../config/firebaseconfig';
+import {
+  ActiveSosAlertSnapshot,
+  cancelSosAlert,
+  createSosAlertFromCurrentUser,
+  IncidentEvidenceDraft,
+  SosOptionId,
+  subscribeToActiveSosAlert,
+} from '../services/sosAlerts';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import {
+  createAudioPlayer,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 // Using lucide-react-native for clean icons, but Expo's Ionicons/MaterialIcons work great too
 import {
     ArrowRight,
@@ -28,15 +52,148 @@ import {
     Wifi,
     Flame,
     HeartPulse,
-    UserCheck
+    UserCheck,
+    Camera,
+    Play,
+    RotateCcw,
+    Send,
+    Square,
+    Trash2,
+    X
 } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
+const CANCEL_SLIDE_MAX = Math.max(width - 104, 180);
+const CANCEL_SLIDE_THRESHOLD = CANCEL_SLIDE_MAX * 0.82;
+
+const toMillis = (value: unknown) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (typeof value === 'number') {
+    return value > 10000000000 ? value : Date.now() + value * 60 * 1000;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (typeof value === 'object') {
+    const timestampLike = value as { toDate?: () => Date; seconds?: number };
+    if (typeof timestampLike.toDate === 'function') {
+      return timestampLike.toDate().getTime();
+    }
+    if (typeof timestampLike.seconds === 'number') {
+      return timestampLike.seconds * 1000;
+    }
+  }
+
+  return null;
+};
+
+const formatEta = (eta: unknown, now: number) => {
+  if (typeof eta === 'number' && Number.isFinite(eta) && eta <= 300) {
+    return { value: `${Math.max(0, Math.round(eta))}`, unit: 'MIN' };
+  }
+
+  if (typeof eta === 'string' && eta.trim()) {
+    const parsed = Date.parse(eta.trim());
+    if (Number.isNaN(parsed)) {
+      return { value: eta.trim(), unit: '' };
+    }
+  }
+
+  const etaMillis = toMillis(eta);
+  if (!etaMillis) {
+    return { value: 'PENDING', unit: '' };
+  }
+
+  const remainingSeconds = Math.max(0, Math.ceil((etaMillis - now) / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+
+  return {
+    value: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+    unit: 'MIN SEC',
+  };
+};
+
+const formatDistanceKm = (fromLat: number | null, fromLng: number | null, toLat: number | null, toLng: number | null) => {
+  if (fromLat === null || fromLng === null || toLat === null || toLng === null) {
+    return 'Waiting for responder GPS';
+  }
+
+  const earthRadiusKm = 6371;
+  const dLat = ((toLat - fromLat) * Math.PI) / 180;
+  const dLng = ((toLng - fromLng) * Math.PI) / 180;
+  const startLat = (fromLat * Math.PI) / 180;
+  const endLat = (toLat * Math.PI) / 180;
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const distance = earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return `${distance.toFixed(distance < 10 ? 1 : 0)} km`;
+};
+
+const getResponderLabel = (alert: ActiveSosAlertSnapshot) => {
+  if (alert.accepted_by_hospital) {
+    return alert.accepted_by_hospital;
+  }
+
+  if (alert.accepted_by_name) {
+    return alert.accepted_by_name;
+  }
+
+  if (alert.police_station_id) {
+    return `Police station ${alert.police_station_id}`;
+  }
+
+  switch (alert.type) {
+    case 'police':
+      return 'Police response pending';
+    case 'fire':
+      return 'Fire response pending';
+    case 'guardian':
+      return 'Guardian response pending';
+    case 'hospital':
+      return 'Hospital response pending';
+    default:
+      return 'Responder pending';
+  }
+};
+
+const getRouteStatus = (alert: ActiveSosAlertSnapshot) => {
+  const status = (alert.status ?? '').replace(/_/g, ' ');
+  if (alert.accepted_at || alert.accepted_by_hospital || alert.accepted_by_name) {
+    return alert.type === 'hospital' ? 'Ambulance on the way' : 'Responder accepted';
+  }
+
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'SOS broadcasted';
+};
 
 export default function RakshaSosScreen({ navigation }: any) {        
   // Radial menu state
   const [isMenuVisible, setIsMenuVisible] = useState(false);
-  const [activeOption, setActiveOption] = useState<string | null>(null);
+  const [activeOption, setActiveOption] = useState<SosOptionId | null>(null);
+  const [isSendingSos, setIsSendingSos] = useState(false);
+  const [selectedIncidentType, setSelectedIncidentType] = useState<SosOptionId | null>(null);
+  const [incidentNote, setIncidentNote] = useState('');
+  const [incidentPhotoUri, setIncidentPhotoUri] = useState<string | null>(null);
+  const [incidentAudioUri, setIncidentAudioUri] = useState<string | null>(null);
+  const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
+  const [isSubmittingIncident, setIsSubmittingIncident] = useState(false);
+  const [activeSosAlert, setActiveSosAlert] = useState<ActiveSosAlertSnapshot | null>(null);
+  const [isLoadingActiveSos, setIsLoadingActiveSos] = useState(true);
+  const [isCancellingSos, setIsCancellingSos] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [joystickCoords, setJoystickCoords] = useState({ x: 0, y: 0, dist: 0, angle: 0 });
 
@@ -45,6 +202,9 @@ export default function RakshaSosScreen({ navigation }: any) {
   const touchXAnim = useRef(new Animated.Value(0)).current;
   const touchYAnim = useRef(new Animated.Value(0)).current;
   const holdProgress = useRef(new Animated.Value(0)).current;
+  const cancelSlideX = useRef(new Animated.Value(0)).current;
+  const activeSosAlertRef = useRef<ActiveSosAlertSnapshot | null>(null);
+  const isCancellingSosRef = useRef(false);
 
   // Option specific scale and opacity animations
   const policeScale = useRef(new Animated.Value(1)).current;
@@ -56,6 +216,58 @@ export default function RakshaSosScreen({ navigation }: any) {
   const hospitalOpacity = useRef(new Animated.Value(1)).current;      
   const guardiansOpacity = useRef(new Animated.Value(1)).current;     
   const fireOpacity = useRef(new Animated.Value(1)).current;
+
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const audioRecorderState = useAudioRecorderState(audioRecorder);
+  const audioPlayer = useRef(createAudioPlayer(null)).current;
+  const audioPlayerStatus = useAudioPlayerStatus(audioPlayer);
+  const cameraRef = useRef<CameraView>(null);
+
+  useEffect(() => {
+    let unsubscribeAlerts: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      unsubscribeAlerts?.();
+      unsubscribeAlerts = undefined;
+
+      if (!user) {
+        setActiveSosAlert(null);
+        setIsLoadingActiveSos(false);
+        return;
+      }
+
+      setIsLoadingActiveSos(true);
+      unsubscribeAlerts = subscribeToActiveSosAlert(
+        user.uid,
+        (alert) => {
+          setActiveSosAlert(alert);
+          setIsLoadingActiveSos(false);
+        },
+        (error) => {
+          console.error("Error listening to active SOS alert:", error);
+          setIsLoadingActiveSos(false);
+        },
+      );
+    });
+
+    return () => {
+      unsubscribeAlerts?.();
+      unsubscribeAuth();
+    };
+  }, []);
+
+  useEffect(() => {
+    activeSosAlertRef.current = activeSosAlert;
+  }, [activeSosAlert]);
+
+  useEffect(() => {
+    isCancellingSosRef.current = isCancellingSos;
+  }, [isCancellingSos]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Active option changes trigger spring/timing animations
   useEffect(() => {
@@ -77,7 +289,7 @@ export default function RakshaSosScreen({ navigation }: any) {
   }, [activeOption]);
 
   // Keep track of the active option using a ref to read inside responder callbacks synchronously
-  const activeOptionRef = useRef<string | null>(null);
+  const activeOptionRef = useRef<SosOptionId | null>(null);
   useEffect(() => {
     activeOptionRef.current = activeOption;
   }, [activeOption]);
@@ -86,7 +298,7 @@ export default function RakshaSosScreen({ navigation }: any) {
   const RADIAL_RADIUS = width * 0.38;
   const STRETCH_THRESHOLD = 40; // Snappier threshold of dragging distance to trigger an option
 
-  const getActiveOptionFromGesture = (dx: number, dy: number) => {    
+  const getActiveOptionFromGesture = (dx: number, dy: number): SosOptionId | null => {    
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < STRETCH_THRESHOLD) {
       return null;
@@ -124,7 +336,56 @@ export default function RakshaSosScreen({ navigation }: any) {
     }
   };
 
-  const triggerSos = () => {
+  const saveSosAlertToFirestore = async (
+    sosType: SosOptionId | null,
+    evidence?: IncidentEvidenceDraft,
+  ) => {
+    if (isSendingSos) {
+      return false;
+    }
+
+    setIsSendingSos(true);
+
+    try {
+      const createdAlert = await createSosAlertFromCurrentUser(auth.currentUser, sosType, evidence);
+      setActiveSosAlert(createdAlert.alert);
+      activeSosAlertRef.current = createdAlert.alert;
+      setIsLoadingActiveSos(false);
+      console.log("SOS Alert details successfully sent to Firestore!");
+      return true;
+    } catch (error) {
+      console.error("Error sending SOS details to Firestore:", error);
+      Alert.alert(
+        "SOS not sent",
+        error instanceof Error ? error.message : "We could not send your SOS alert. Please try again.",
+      );
+      return false;
+    } finally {
+      setIsSendingSos(false);
+    }
+  };
+
+  const getIncidentTitle = () => {
+    switch (selectedIncidentType) {
+      case 'police':
+        return 'Police SOS Evidence';
+      case 'hospital':
+        return 'Hospital SOS Evidence';
+      case 'fire':
+        return 'Fire SOS Evidence';
+      case 'guardians':
+        return 'Guardian SOS Evidence';
+      default:
+        return 'SOS Evidence';
+    }
+  };
+
+  const triggerSos = async () => {
+    const wasSent = await saveSosAlertToFirestore(null);
+    if (!wasSent) {
+      return;
+    }
+
     Alert.alert(
       "SOS Broadcast Active",
       "Emergency alert broadcasted with GPS coordinates and real-time audio stream to all registered guardians & local response dispatch.", 
@@ -140,15 +401,38 @@ export default function RakshaSosScreen({ navigation }: any) {
     );
   };
 
-  const cancelSos = () => {
-    Alert.alert(
-      "SOS Deactivated",
-      "Emergency distress signal successfully deactivated. Active safety tracking turned off.",
-      [{ text: "OK" }]
-    );
+  const cancelSos = async () => {
+    const alertToCancel = activeSosAlertRef.current;
+    if (!alertToCancel || isCancellingSosRef.current) {
+      Animated.spring(cancelSlideX, { toValue: 0, useNativeDriver: true }).start();
+      return;
+    }
+
+    isCancellingSosRef.current = true;
+    setIsCancellingSos(true);
+
+    try {
+      await cancelSosAlert(alertToCancel.id);
+      Vibration.vibrate([0, 60, 40, 60]);
+      Alert.alert(
+        "SOS Cancelled",
+        "Your active SOS has been marked cancelled. Responders will see the updated status.",
+        [{ text: "OK" }],
+      );
+    } catch (error) {
+      console.error("Error cancelling SOS:", error);
+      Alert.alert(
+        "Cancel failed",
+        error instanceof Error ? error.message : "We could not cancel this SOS. Please try again.",
+      );
+    } finally {
+      isCancellingSosRef.current = false;
+      setIsCancellingSos(false);
+      Animated.spring(cancelSlideX, { toValue: 0, useNativeDriver: true }).start();
+    }
   };
 
-  const triggerAction = (optionId: string) => {
+  const showActionConfirmation = (optionId: SosOptionId) => {
     switch (optionId) {
       case 'police':
         Alert.alert(
@@ -175,6 +459,154 @@ export default function RakshaSosScreen({ navigation }: any) {
         );
         break;
     }
+  };
+
+  const resetIncidentDraft = () => {
+    setSelectedIncidentType(null);
+    setIncidentNote('');
+    setIncidentPhotoUri(null);
+    setIncidentAudioUri(null);
+    audioPlayer.pause();
+  };
+
+  const triggerAction = (optionId: SosOptionId) => {
+    setSelectedIncidentType(optionId);
+    setIncidentNote('');
+    setIncidentPhotoUri(null);
+    setIncidentAudioUri(null);
+  };
+
+  const closeIncidentModal = () => {
+    if (isSubmittingIncident || audioRecorderState.isRecording) {
+      return;
+    }
+
+    resetIncidentDraft();
+  };
+
+  const captureAccidentPhoto = async () => {
+    setIsCapturingPhoto(true);
+
+    try {
+      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
+      if (!permission?.granted) {
+        Alert.alert("Camera access needed", "Please allow camera access to attach an accident photo.");
+        return;
+      }
+
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.72,
+        skipProcessing: false,
+      });
+
+      if (photo?.uri) {
+        setIncidentPhotoUri(photo.uri);
+      }
+    } catch (error) {
+      console.error("Error capturing accident photo:", error);
+      Alert.alert("Photo not captured", "We could not take the photo. Please try again.");
+    } finally {
+      setIsCapturingPhoto(false);
+    }
+  };
+
+  const startIncidentRecording = async () => {
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Microphone access needed", "Please allow microphone access to attach an audio note.");
+        return;
+      }
+
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    } catch (error) {
+      console.error("Error starting incident recording:", error);
+      Alert.alert("Recording not started", "We could not start audio recording. Please try again.");
+    }
+  };
+
+  const stopIncidentRecording = async () => {
+    try {
+      await audioRecorder.stop();
+      setIncidentAudioUri(audioRecorder.uri);
+      if (audioRecorder.uri) {
+        audioPlayer.replace({ uri: audioRecorder.uri });
+      }
+      await setAudioModeAsync({
+        allowsRecording: false,
+      });
+    } catch (error) {
+      console.error("Error stopping incident recording:", error);
+      Alert.alert("Recording not saved", "We could not save this audio note. Please try again.");
+    }
+  };
+
+  const playIncidentRecording = async () => {
+    if (!incidentAudioUri) {
+      return;
+    }
+
+    try {
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+
+      if (audioPlayerStatus.playing) {
+        audioPlayer.pause();
+        return;
+      }
+
+      if (audioPlayerStatus.didJustFinish) {
+        await audioPlayer.seekTo(0);
+      }
+
+      audioPlayer.play();
+    } catch (error) {
+      console.error("Error playing incident recording:", error);
+      Alert.alert("Audio not playing", "We could not play this recording. Please try again.");
+    }
+  };
+
+  const discardIncidentRecording = () => {
+    audioPlayer.pause();
+    setIncidentAudioUri(null);
+  };
+
+  const discardIncidentPhoto = () => {
+    setIncidentPhotoUri(null);
+  };
+
+  const submitIncidentSos = async () => {
+    if (!selectedIncidentType) {
+      return;
+    }
+
+    if (!incidentPhotoUri) {
+      Alert.alert("Accident photo needed", "Please take a photo before sending this SOS evidence.");
+      return;
+    }
+
+    setIsSubmittingIncident(true);
+    const wasSent = await saveSosAlertToFirestore(selectedIncidentType, {
+      note: incidentNote,
+      photoUri: incidentPhotoUri,
+      audioUri: incidentAudioUri,
+    });
+    setIsSubmittingIncident(false);
+
+    if (!wasSent) {
+      return;
+    }
+
+    const sentType = selectedIncidentType;
+    resetIncidentDraft();
+    showActionConfirmation(sentType);
   };
 
   const panResponder = useRef(
@@ -284,6 +716,46 @@ export default function RakshaSosScreen({ navigation }: any) {
       }
     })
   ).current;
+
+  const cancelPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => Boolean(activeSosAlertRef.current) && !isCancellingSosRef.current,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Boolean(activeSosAlertRef.current) && !isCancellingSosRef.current && Math.abs(gestureState.dx) > 4,
+      onPanResponderMove: (_, gestureState) => {
+        const clampedX = Math.max(0, Math.min(gestureState.dx, CANCEL_SLIDE_MAX));
+        cancelSlideX.setValue(clampedX);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx >= CANCEL_SLIDE_THRESHOLD) {
+          Animated.timing(cancelSlideX, {
+            toValue: CANCEL_SLIDE_MAX,
+            duration: 120,
+            useNativeDriver: true,
+          }).start(() => {
+            cancelSos();
+          });
+          return;
+        }
+
+        Animated.spring(cancelSlideX, { toValue: 0, useNativeDriver: true }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(cancelSlideX, { toValue: 0, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  const etaDisplay = activeSosAlert ? formatEta(activeSosAlert.ambulance_eta, currentTime) : null;
+  const responderDistance = activeSosAlert
+    ? formatDistanceKm(
+        activeSosAlert.last_known_lat,
+        activeSosAlert.last_known_lng,
+        activeSosAlert.ambulance_lat,
+        activeSosAlert.ambulance_lng,
+      )
+    : null;
+  const pendingCloudFields = activeSosAlert?.cloud_function_pending_fields ?? [];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -569,42 +1041,213 @@ export default function RakshaSosScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Ambulance Tracking Status Card */}
-        <View style={styles.trackingCard}>
-          <View style={styles.trackingLeft}>
-            <Text style={styles.helpLabel}>HELP ARRIVING IN</Text>    
-            <Text style={styles.countdownText}>
-              14:32 <Text style={styles.countdownUnit}>MIN SEC</Text> 
-            </Text>
+        {isLoadingActiveSos ? (
+          <View style={styles.trackingCard}>
+            <ActivityIndicator color="#B82C2C" />
+            <Text style={styles.loadingTrackingText}>Checking active SOS status...</Text>
           </View>
+        ) : activeSosAlert && etaDisplay ? (
+          <>
+            <View style={styles.trackingCard}>
+              <View style={styles.trackingLeft}>
+                <Text style={styles.helpLabel}>HELP ARRIVING IN</Text>
+                <Text style={styles.countdownText}>
+                  {etaDisplay.value}
+                  {etaDisplay.unit ? <Text style={styles.countdownUnit}> {etaDisplay.unit}</Text> : null}
+                </Text>
+              </View>
 
-          <View style={styles.divider} />
+              <View style={styles.divider} />
 
-          <View style={styles.trackingRight}>
-            <Text style={styles.statusRouteText}>Ambulance on the way</Text>
-            <View style={styles.acceptedBadge}>
-              <CheckCircle2 size={12} color="#2e7d32" />
-              <Text style={styles.acceptedText}>ACCEPTED</Text>       
+              <View style={styles.trackingRight}>
+                <Text style={styles.statusRouteText}>{getRouteStatus(activeSosAlert)}</Text>
+                <View style={[styles.acceptedBadge, !activeSosAlert.accepted_at && styles.pendingBadge]}>
+                  <CheckCircle2 size={12} color={activeSosAlert.accepted_at ? '#2e7d32' : '#8a6a18'} />
+                  <Text style={[styles.acceptedText, !activeSosAlert.accepted_at && styles.pendingText]}>
+                    {activeSosAlert.accepted_at ? 'ACCEPTED' : 'WAITING'}
+                  </Text>
+                </View>
+                <Text style={styles.detailsText}>Distance: <Text style={styles.boldText}>{responderDistance}</Text></Text>
+                <Text style={styles.detailsText}>
+                  Responder: <Text style={styles.hospitalText}>{getResponderLabel(activeSosAlert)}</Text>
+                </Text>
+                {pendingCloudFields.length > 0 ? (
+                  <Text style={styles.cloudPendingText}>
+                    Pending from Cloud Functions: {pendingCloudFields.slice(0, 3).join(', ')}
+                    {pendingCloudFields.length > 3 ? '...' : ''}
+                  </Text>
+                ) : null}
+              </View>
+
+              <ChevronRight size={20} color="#888" style={styles.cardArrow} />
             </View>
-            <Text style={styles.detailsText}>Distance: <Text style={styles.boldText}>6.2 km</Text></Text>
-            <Text style={styles.detailsText}>Hospital: <Text style={styles.hospitalText}>City Care Hospital</Text></Text>
-          </View>
 
-          <ChevronRight size={20} color="#888" style={styles.cardArrow} />
-        </View>
-
-        {/* Slide to Cancel SOS Dynamic Trigger */}
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={styles.sliderContainer}
-          onPress={cancelSos}
-        >
-          <View style={styles.sliderCircle}>
-            <ArrowRight size={20} color="#fff" />
+            <View style={[styles.sliderContainer, isCancellingSos && styles.sliderContainerDisabled]}>
+              <Animated.View
+                style={[styles.sliderCircle, { transform: [{ translateX: cancelSlideX }] }]}
+                {...cancelPanResponder.panHandlers}
+              >
+                {isCancellingSos ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <ArrowRight size={20} color="#fff" />
+                )}
+              </Animated.View>
+              <Text style={styles.sliderText}>
+                {isCancellingSos ? 'CANCELLING SOS...' : 'SLIDE TO CANCEL SOS'}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <View style={styles.idleTrackingCard}>
+            <View>
+              <Text style={styles.helpLabel}>ACTIVE SOS</Text>
+              <Text style={styles.idleTrackingTitle}>No active request</Text>
+            </View>
+            <Text style={styles.idleTrackingText}>Send an SOS to show live responder status here.</Text>
           </View>
-          <Text style={styles.sliderText}>SLIDE TO CANCEL SOS</Text>  
-        </TouchableOpacity>
+        )}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={selectedIncidentType !== null}
+        onRequestClose={closeIncidentModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.incidentModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{getIncidentTitle()}</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={closeIncidentModal}
+                disabled={isSubmittingIncident || audioRecorderState.isRecording}
+              >
+                <X size={18} color="#59413f" />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.incidentInput}
+              placeholder="Describe what happened, visible injuries, vehicle number, or nearby landmark."
+              placeholderTextColor="#897574"
+              multiline
+              textAlignVertical="top"
+              value={incidentNote}
+              onChangeText={setIncidentNote}
+              editable={!isSubmittingIncident}
+            />
+
+            <View style={styles.cameraPanel}>
+              {incidentPhotoUri ? (
+                <Image source={{ uri: incidentPhotoUri }} style={styles.incidentPhotoPreview} />
+              ) : cameraPermission?.granted ? (
+                <CameraView
+                  ref={cameraRef}
+                  style={styles.cameraPreview}
+                  facing="back"
+                  mode="picture"
+                />
+              ) : (
+                <View style={styles.cameraPermissionPanel}>
+                  <Camera size={24} color="#ac2b2e" />
+                  <Text style={styles.cameraPermissionText}>Camera permission is needed for the accident photo.</Text>
+                </View>
+              )}
+
+              <View style={styles.cameraActions}>
+                <TouchableOpacity
+                  style={styles.evidenceButton}
+                  onPress={incidentPhotoUri ? discardIncidentPhoto : captureAccidentPhoto}
+                  disabled={isCapturingPhoto || isSubmittingIncident}
+                >
+                  {isCapturingPhoto ? (
+                    <ActivityIndicator color="#ac2b2e" />
+                  ) : incidentPhotoUri ? (
+                    <RotateCcw size={18} color="#ac2b2e" />
+                  ) : (
+                    <Camera size={18} color="#ac2b2e" />
+                  )}
+                  <Text style={styles.evidenceButtonText}>
+                    {incidentPhotoUri ? 'Retake Photo' : 'Capture Photo'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.audioPanel}>
+              <View style={styles.audioInfo}>
+                <Text style={styles.audioTitle}>Incident audio</Text>
+                <Text style={styles.audioMeta}>
+                  {audioRecorderState.isRecording
+                    ? `${Math.round(audioRecorderState.durationMillis / 1000)}s recording`
+                    : incidentAudioUri
+                      ? 'Recording attached'
+                      : 'Optional'}
+                </Text>
+              </View>
+
+              <View style={styles.audioActions}>
+                <TouchableOpacity
+                  style={styles.iconActionButton}
+                  onPress={audioRecorderState.isRecording ? stopIncidentRecording : startIncidentRecording}
+                  disabled={isSubmittingIncident}
+                >
+                  {audioRecorderState.isRecording ? (
+                    <Square size={18} color="#ac2b2e" />
+                  ) : (
+                    <Mic size={18} color="#ac2b2e" />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.iconActionButton, !incidentAudioUri && styles.iconActionButtonDisabled]}
+                  onPress={playIncidentRecording}
+                  disabled={!incidentAudioUri || isSubmittingIncident || audioRecorderState.isRecording}
+                >
+                  <Play size={18} color={incidentAudioUri ? '#ac2b2e' : '#BCA8A8'} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.iconActionButton, !incidentAudioUri && styles.iconActionButtonDisabled]}
+                  onPress={discardIncidentRecording}
+                  disabled={!incidentAudioUri || isSubmittingIncident || audioRecorderState.isRecording}
+                >
+                  <Trash2 size={18} color={incidentAudioUri ? '#ac2b2e' : '#BCA8A8'} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.evidenceStatusRow}>
+              <Text style={styles.evidenceStatusText}>
+                Photo {incidentPhotoUri ? 'attached' : 'required'}
+              </Text>
+              <Text style={styles.evidenceStatusText}>
+                Audio {incidentAudioUri ? 'attached' : audioRecorderState.isRecording ? 'recording' : 'optional'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.sendIncidentButton,
+                (!incidentPhotoUri || isSubmittingIncident) && styles.sendIncidentButtonDisabled,
+              ]}
+              onPress={submitIncidentSos}
+              disabled={!incidentPhotoUri || isSubmittingIncident}
+            >
+              {isSubmittingIncident ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Send size={18} color="#fff" />
+              )}
+              <Text style={styles.sendIncidentText}>
+                {isSubmittingIncident ? 'Sending SOS...' : 'Send SOS Evidence'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -743,6 +1386,33 @@ const styles = StyleSheet.create({
     marginTop: 24,
     position: 'relative',
   },
+  loadingTrackingText: {
+    marginLeft: 10,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#59413f',
+  },
+  idleTrackingCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EAE5E5',
+    padding: 16,
+    marginTop: 24,
+    gap: 8,
+  },
+  idleTrackingTitle: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#1a1c1b',
+  },
+  idleTrackingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#665a58',
+    lineHeight: 17,
+  },
   trackingLeft: {
     flex: 1.1,
     justifyContent: 'center',
@@ -794,10 +1464,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2e7d32',
   },
+  pendingBadge: {
+    backgroundColor: '#FFF6D7',
+  },
+  pendingText: {
+    color: '#8a6a18',
+  },
   detailsText: {
     fontSize: 11,
     color: '#666',
     marginTop: 1,
+  },
+  cloudPendingText: {
+    marginTop: 5,
+    fontSize: 10,
+    color: '#8a6a18',
+    fontWeight: '700',
+    lineHeight: 14,
   },
   boldText: {
     fontWeight: '600',
@@ -822,6 +1505,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 6,
+  },
+  sliderContainerDisabled: {
+    opacity: 0.72,
   },
   sliderCircle: {
     width: 44,
@@ -987,5 +1673,182 @@ const styles = StyleSheet.create({
     right: -1000,
     backgroundColor: '#000',
     zIndex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    justifyContent: 'flex-end',
+  },
+  incidentModal: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 18,
+    paddingBottom: 28,
+    borderWidth: 1,
+    borderColor: '#F0D9D9',
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1a1c1b',
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F6EEEE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  incidentInput: {
+    minHeight: 104,
+    borderWidth: 1,
+    borderColor: '#E6CDCD',
+    borderRadius: 10,
+    backgroundColor: '#FCF9F9',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1a1c1b',
+    lineHeight: 20,
+  },
+  cameraPanel: {
+    gap: 10,
+  },
+  cameraPreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#1a1c1b',
+  },
+  cameraPermissionPanel: {
+    width: '100%',
+    height: 220,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E6CDCD',
+    backgroundColor: '#FFF7F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+    gap: 10,
+  },
+  cameraPermissionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#59413f',
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  cameraActions: {
+    flexDirection: 'row',
+  },
+  evidenceButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E6CDCD',
+    backgroundColor: '#FFF7F7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  evidenceButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ac2b2e',
+    textAlign: 'center',
+  },
+  incidentPhotoPreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: 10,
+    backgroundColor: '#F6EEEE',
+  },
+  audioPanel: {
+    borderWidth: 1,
+    borderColor: '#E6CDCD',
+    backgroundColor: '#FCF9F9',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  audioInfo: {
+    flex: 1,
+  },
+  audioTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1a1c1b',
+  },
+  audioMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#59413f',
+    fontWeight: '600',
+  },
+  audioActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconActionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E6CDCD',
+    backgroundColor: '#FFF7F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconActionButtonDisabled: {
+    backgroundColor: '#F6EEEE',
+  },
+  evidenceStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  evidenceStatusText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#59413f',
+    backgroundColor: '#F6EEEE',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+  },
+  sendIncidentButton: {
+    minHeight: 50,
+    borderRadius: 10,
+    backgroundColor: '#B82C2C',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sendIncidentButtonDisabled: {
+    backgroundColor: '#CDA5A5',
+  },
+  sendIncidentText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -22,6 +22,8 @@ import {
   Flame,
   UserCheck
 } from 'lucide-react-native';
+import { auth } from '../config/firebaseconfig';
+import { getUserEmergencyContacts } from '../services/sosAlerts';
 
 interface Contact {
   id: string;
@@ -31,10 +33,7 @@ interface Contact {
 }
 
 export default function EmergencyCallScreen({ navigation }: any) {    
-  const [contacts, setContacts] = useState<Contact[]>([
-    { id: '1', name: 'Rohan Sharma (Husband)', phone: '+91 98765 00101', relation: 'Spouse' },
-    { id: '2', name: 'Kiran Devi (Mother)', phone: '+91 98765 00102', relation: 'Parent' },
-  ]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
@@ -48,6 +47,30 @@ export default function EmergencyCallScreen({ navigation }: any) {
     { name: 'Fire Response', number: '101', icon: Flame, color: '#e67e22' },
     { name: 'Women Helpline', number: '1091', icon: UserCheck, color: '#9b59b6' },
   ];
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+
+    getUserEmergencyContacts(uid)
+      .then((savedContacts) => {
+        setContacts(
+          savedContacts
+            .filter((contact) => contact.phone_number)
+            .map((contact) => ({
+              id: contact.id,
+              name: contact.name ?? 'Emergency contact',
+              phone: contact.phone_number ?? '',
+              relation: contact.relationship ?? 'Guardian',
+            })),
+        );
+      })
+      .catch((error) => {
+        console.error('Error loading emergency contacts:', error);
+      });
+  }, []);
 
   const handleCall = (name: string, number: string) => {
     Alert.alert(
