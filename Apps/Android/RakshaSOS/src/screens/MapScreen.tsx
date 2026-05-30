@@ -1,220 +1,399 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Linking,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ScrollView,
-  Alert,
-  Modal,
-  TextInput,
-  Dimensions
 } from 'react-native';
+import Constants from 'expo-constants';
+import MapView from 'react-native-maps/lib/MapView';
+import Marker from 'react-native-maps/lib/MapMarker';
+import { Region } from 'react-native-maps/lib/sharedTypes';
+import * as Location from 'expo-location';
 import {
   ArrowLeft,
-  MapPin,
-  ShieldCheck,
-  AlertTriangle,
-  Map,
-  Plus,
-  Users,
   Compass,
-  User
+  HeartPulse,
+  Map as MapIcon,
+  MapPin,
+  Navigation as NavigationIcon,
+  RefreshCw,
+  ShieldCheck,
 } from 'lucide-react-native';
 
-const { width } = Dimensions.get('window');
+type NearbyFilter = 'all' | 'hospital' | 'police';
 
-interface Incident {
+type NearbyPlace = {
   id: string;
-  type: string;
-  desc: string;
-  x: number;
-  y: number;
-  reportedBy: string;
+  type: 'hospital' | 'police';
+  name: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  distanceMeters: number;
+};
+
+type GooglePlaceResult = {
+  id?: string;
+  name?: string;
+  formattedAddress?: string;
+  location?: {
+    latitude?: number;
+    longitude?: number;
+  };
+  types?: string[];
+};
+
+const DEFAULT_REGION: Region = {
+  latitude: 23.2599,
+  longitude: 77.4126,
+  latitudeDelta: 0.045,
+  longitudeDelta: 0.045,
+};
+
+const SEARCH_RADIUS_METERS = 5000;
+
+const filterOptions: Array<{ id: NearbyFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'hospital', label: 'Hospitals' },
+  { id: 'police', label: 'Police' },
+];
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function getDistanceMeters(fromLat: number, fromLon: number, toLat: number, toLon: number) {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(toLat - fromLat);
+  const dLon = toRadians(toLon - fromLon);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(fromLat)) *
+      Math.cos(toRadians(toLat)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  return Math.round(earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function formatDistance(meters: number) {
+  if (meters < 1000) {
+    return `${meters} m`;
+  }
+
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function getPlaceKey(place: NearbyPlace) {
+  return [
+    place.type,
+    place.name.toLowerCase(),
+    place.latitude.toFixed(4),
+    place.longitude.toFixed(4),
+  ].join(':');
+}
+
+function getGoogleMapsApiKey() {
+  const extra = (Constants.expoConfig?.extra ?? Constants.manifest2?.extra ?? {}) as Record<string, unknown>;
+  return typeof extra.googleMapsApiKey === 'string' ? extra.googleMapsApiKey : '';
+}
+
+async function fetchNearbyPlaces(latitude: number, longitude: number): Promise<NearbyPlace[]> {
+  const googleMapsApiKey = getGoogleMapsApiKey();
+
+  if (!googleMapsApiKey) {
+    throw new Error('Google Maps API key is missing. Add EXPO_PUBLIC_GOOGLE_MAPS_API_KEY to .env.local.');
+  }
+
+  const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': googleMapsApiKey,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types',
+    },
+    body: JSON.stringify({
+      includedTypes: ['hospital', 'police'],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude,
+            longitude,
+          },
+          radius: SEARCH_RADIUS_METERS,
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Nearby places could not be loaded from Google Places.');
+  }
+
+  const data = (await response.json()) as { places?: Array<GooglePlaceResult & { displayName?: { text?: string } }> };
+
+  const mappedPlaces = (data.places ?? [])
+    .map((element): NearbyPlace | null => {
+      const placeLat = element.location?.latitude;
+      const placeLon = element.location?.longitude;
+      const placeType = element.types?.includes('hospital') ? 'hospital' : element.types?.includes('police') ? 'police' : null;
+
+      if (!placeLat || !placeLon || !placeType) {
+        return null;
+      }
+
+      return {
+        id: element.id || `${placeType}-${placeLat}-${placeLon}`,
+        type: placeType,
+        name:
+          element.displayName?.text ||
+          element.name ||
+          (placeType === 'hospital' ? 'Nearby hospital' : 'Nearby police station'),
+        latitude: placeLat,
+        longitude: placeLon,
+        address: element.formattedAddress,
+        distanceMeters: getDistanceMeters(latitude, longitude, placeLat, placeLon),
+      };
+    })
+    .filter((place): place is NearbyPlace => Boolean(place));
+
+  const uniquePlaces = new Map<string, NearbyPlace>();
+
+  mappedPlaces.forEach((place) => {
+    const key = getPlaceKey(place);
+    const current = uniquePlaces.get(key);
+
+    if (!current || place.distanceMeters < current.distanceMeters) {
+      uniquePlaces.set(key, place);
+    }
+  });
+
+  return Array.from(uniquePlaces.values()).sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
 export default function MapScreen({ navigation }: any) {
-  const [incidents, setIncidents] = useState<Incident[]>([
-    { id: '1', type: 'Unlit Alleyway', desc: 'No functional streetlights near Sector 4 lane.', x: 120, y: 70, reportedBy: 'Anonymous' },    
-    { id: '2', type: 'Police Patrol', desc: 'Active police checkpoint.', x: 220, y: 150, reportedBy: 'System Verification' },
-  ]);
+  const mapRef = useRef<MapView>(null);
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [userLocation, setUserLocation] = useState<Location.LocationObjectCoords | null>(null);
+  const [places, setPlaces] = useState<NearbyPlace[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<NearbyFilter>('all');
+  const [isLocating, setIsLocating] = useState(true);
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const hasGoogleMapsApiKey = Boolean(getGoogleMapsApiKey());
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [reportType, setReportType] = useState('Poor Lighting');      
-  const [reportDesc, setReportDesc] = useState('');
-
-  const handleReport = () => {
-    if (!reportDesc) {
-      Alert.alert("Input Error", "Please provide a description of the issue.");
-      return;
+  const filteredPlaces = useMemo(() => {
+    if (selectedFilter === 'all') {
+      return places;
     }
-    const newIncident: Incident = {
-      id: Date.now().toString(),
-      type: reportType,
-      desc: reportDesc,
-      x: Math.random() * 200 + 50,
-      y: Math.random() * 180 + 40,
-      reportedBy: 'You',
-    };
-    setIncidents([...incidents, newIncident]);
-    setReportDesc('');
-    setModalVisible(false);
-    Alert.alert("Report Submitted", "Your safety report has been added to the neighborhood map for other users.");
+
+    return places.filter((place) => place.type === selectedFilter);
+  }, [places, selectedFilter]);
+
+  const loadNearbyPlaces = async (latitude: number, longitude: number) => {
+    setIsLoadingPlaces(true);
+
+    try {
+      const nextPlaces = await fetchNearbyPlaces(latitude, longitude);
+      setPlaces(nextPlaces);
+    } catch (error) {
+      console.error('Error loading nearby map places:', error);
+      Alert.alert(
+        'Nearby places unavailable',
+        'The map is working, but nearby hospitals and police stations could not be refreshed right now.',
+      );
+    } finally {
+      setIsLoadingPlaces(false);
+    }
   };
+
+  const locateUser = async () => {
+    setIsLocating(true);
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('Location access needed', 'Allow location access to show nearby hospitals and police stations.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const nextRegion: Region = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.045,
+        longitudeDelta: 0.045,
+      };
+
+      setUserLocation(location.coords);
+      setRegion(nextRegion);
+      mapRef.current?.animateToRegion(nextRegion, 650);
+      await loadNearbyPlaces(location.coords.latitude, location.coords.longitude);
+    } catch (error) {
+      console.error('Error locating user for map:', error);
+      Alert.alert('Location unavailable', 'We could not read your current location. Showing the default city map.');
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const openRoute = (place: NearbyPlace) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Route unavailable', 'Could not open maps for directions.');
+    });
+  };
+
+  useEffect(() => {
+    locateUser();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         {navigation.canGoBack() && (
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <ArrowLeft size={24} color="#ac2b2e" />
           </TouchableOpacity>
         )}
-        <Text style={styles.headerTitle}>Raksha Safe Map</Text>       
-        <Map size={22} color="#ac2b2e" />
+        <Text style={styles.headerTitle}>Raksha Safe Map</Text>
+        <MapIcon size={22} color="#ac2b2e" />
       </View>
 
-      {/* Map Mockup Area */}
       <View style={styles.mapArea}>
-        {/* Grids and roads mockup */}
-        <View style={[styles.road, { top: '30%', width: '100%', height: 6 }]} />
-        <View style={[styles.road, { top: '65%', width: '100%', height: 6 }]} />
-        <View style={[styles.road, { left: '35%', height: '100%', width: 6 }]} />
-        <View style={[styles.road, { left: '70%', height: '100%', width: 6 }]} />
-
-        {/* User Location */}
-        <View style={[styles.marker, { top: '50%', left: '52%' }]}>   
-          <View style={styles.userDotPulse} />
-          <View style={styles.userDot} />
-          <Text style={styles.userMarkerText}>You</Text>
-        </View>
-
-        {/* Safe Checkpoint markers */}
-        <View style={[styles.marker, { top: '20%', left: '30%' }]}>   
-          <ShieldCheck size={20} color="#346645" />
-          <Text style={styles.markerText}>Safe Haven</Text>
-        </View>
-
-        {/* Dynamic Incidents */}
-        {incidents.map(inc => (
-          <View key={inc.id} style={[styles.marker, { top: inc.y, left: inc.x }]}>
-            {inc.type === 'Police Patrol' ? (
-              <ShieldCheck size={20} color="#2b59ac" />
-            ) : (
-              <AlertTriangle size={20} color="#ac2b2e" />
-            )}
-            <Text style={styles.markerText}>{inc.type}</Text>
-          </View>
-        ))}
-
-        {/* Float buttons */}
-        <TouchableOpacity style={styles.fabReport} onPress={() => setModalVisible(true)}>
-          <Plus size={20} color="#FFF" />
-          <Text style={styles.fabText}>Report Hotspot</Text>
-        </TouchableOpacity>
-
-        <View style={styles.compassContainer}>
-          <Compass size={24} color="#59413f" />
-        </View>
-      </View>
-
-      {/* Info Panel */}
-      <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.panelTitle}>Active Safety Hotspots</Text> 
-        <Text style={styles.panelSubtitle}>Crowdsourced neighborhood alerts and verified check-ins</Text>
-
-        <View style={styles.cardList}>
-          {incidents.map(inc => (
-            <View key={inc.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardHeaderLeft}>
-                  {inc.type === 'Police Patrol' ? (
-                    <ShieldCheck size={16} color="#2b59ac" />
-                  ) : (
-                    <AlertTriangle size={16} color="#ac2b2e" />       
-                  )}
-                  <Text style={styles.cardTypeName}>{inc.type}</Text> 
-                </View>
-                <Text style={styles.cardReporter}>By: {inc.reportedBy}</Text>
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          initialRegion={DEFAULT_REGION}
+          region={region}
+          mapType="standard"
+          showsUserLocation={Boolean(userLocation)}
+          showsMyLocationButton={false}
+          onRegionChangeComplete={setRegion}
+        >
+          {userLocation && (
+            <Marker
+              coordinate={{
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+              }}
+              title="You are here"
+            >
+              <View style={styles.userMarkerOuter}>
+                <View style={styles.userMarkerInner} />
               </View>
-              <Text style={styles.cardDesc}>{inc.desc}</Text>
-            </View>
+            </Marker>
+          )}
+
+          {filteredPlaces.map((place) => (
+            <Marker
+              key={place.id}
+              coordinate={{ latitude: place.latitude, longitude: place.longitude }}
+              title={place.name}
+              description={`${place.type === 'hospital' ? 'Hospital' : 'Police station'} - ${formatDistance(place.distanceMeters)}`}
+              pinColor={place.type === 'hospital' ? '#ac2b2e' : '#2b59ac'}
+            />
+          ))}
+        </MapView>
+
+        <View style={styles.filterBar}>
+          {filterOptions.map((filter) => (
+            <TouchableOpacity
+              key={filter.id}
+              style={[styles.filterChip, selectedFilter === filter.id && styles.filterChipActive]}
+              onPress={() => setSelectedFilter(filter.id)}
+            >
+              <Text style={[styles.filterText, selectedFilter === filter.id && styles.filterTextActive]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.neighborhoodScoreCard}>
-          <Users size={20} color="#346645" />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.scoreTitle}>Community Safety Rating</Text>
-            <Text style={styles.scoreText}>High safety score in Sector 4 based on active police patrols and user checkpoints.</Text>        
+        <TouchableOpacity style={styles.locateButton} onPress={locateUser} disabled={isLocating}>
+          {isLocating ? <ActivityIndicator size="small" color="#59413f" /> : <Compass size={22} color="#59413f" />}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={() => loadNearbyPlaces(region.latitude, region.longitude)}
+          disabled={isLoadingPlaces}
+        >
+          {isLoadingPlaces ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <RefreshCw size={18} color="#fff" />
+          )}
+          <Text style={styles.refreshText}>Refresh Nearby</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.panel}>
+        {!hasGoogleMapsApiKey && (
+          <View style={styles.setupBanner}>
+            <Text style={styles.setupTitle}>Google Maps API key needed</Text>
+            <Text style={styles.setupText}>
+              Add EXPO_PUBLIC_GOOGLE_MAPS_API_KEY in .env.local to enable the map and nearby hospital/police search.
+            </Text>
           </View>
+        )}
+
+        <View style={styles.panelHeader}>
+          <View>
+            <Text style={styles.panelTitle}>Nearby Emergency Help</Text>
+            <Text style={styles.panelSubtitle}>
+              {filteredPlaces.length} result{filteredPlaces.length === 1 ? '' : 's'} within {SEARCH_RADIUS_METERS / 1000} km
+            </Text>
+          </View>
+          {(isLocating || isLoadingPlaces) && <ActivityIndicator color="#ac2b2e" />}
         </View>
-      </ScrollView>
 
-      {/* Incident Reporting Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Report Danger / Safety Issue</Text>
+        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {filteredPlaces.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <MapPin size={22} color="#ac2b2e" />
+              <Text style={styles.emptyTitle}>No nearby results loaded</Text>
+              <Text style={styles.emptyText}>Refresh nearby places or allow location access.</Text>
+            </View>
+          ) : (
+            filteredPlaces.map((place) => (
+              <View key={place.id} style={styles.card}>
+                <View style={styles.cardTop}>
+                  <View style={styles.placeIcon}>
+                    {place.type === 'hospital' ? (
+                      <HeartPulse size={18} color="#ac2b2e" />
+                    ) : (
+                      <ShieldCheck size={18} color="#2b59ac" />
+                    )}
+                  </View>
+                  <View style={styles.placeInfo}>
+                    <Text style={styles.placeName}>{place.name}</Text>
+                    <Text style={styles.placeType}>
+                      {place.type === 'hospital' ? 'Hospital' : 'Police station'} - {formatDistance(place.distanceMeters)}
+                    </Text>
+                    {place.address ? <Text style={styles.placeAddress}>{place.address}</Text> : null}
+                  </View>
+                </View>
 
-            <Text style={styles.label}>Issue Type</Text>
-            <View style={styles.pickerRow}>
-              {['Poor Lighting', 'Harassment Zone', 'Stray Animals', 'Police Patrol'].map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.pickerChip,
-                    reportType === type && styles.pickerChipActive    
-                  ]}
-                  onPress={() => setReportType(type)}
-                >
-                  <Text
-                    style={[
-                      styles.pickerChipText,
-                      reportType === type && styles.pickerChipTextActive
-                    ]}
-                  >
-                    {type}
-                  </Text>
+                <TouchableOpacity style={styles.routeButton} onPress={() => openRoute(place)}>
+                  <NavigationIcon size={16} color="#fff" />
+                  <Text style={styles.routeButtonText}>Get Route</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>Description</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Provide details about the hazard or incident..."
-              multiline={true}
-              numberOfLines={4}
-              value={reportDesc}
-              onChangeText={setReportDesc}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelBtn]}        
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>      
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveBtn]}
-                onPress={handleReport}
-              >
-                <Text style={styles.saveBtnText}>Submit Report</Text> 
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -245,115 +424,162 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   mapArea: {
-    height: 300,
-    backgroundColor: '#e6dedc',
+    height: 360,
     position: 'relative',
-    overflow: 'hidden',
+    backgroundColor: '#e6dedc',
   },
-  road: {
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filterBar: {
     position: 'absolute',
-    backgroundColor: '#FFF',
-  },
-  marker: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#1a1c1b',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginTop: 2,
-    borderWidth: 0.5,
-    borderColor: '#ccc',
-  },
-  userMarkerText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#000',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: '#4A90E2',
-  },
-  userDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#4A90E2',
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  userDotPulse: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(74, 144, 226, 0.3)',
-  },
-  fabReport: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: '#ac2b2e',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 24,
+    top: 12,
+    left: 12,
+    right: 58,
     flexDirection: 'row',
+    gap: 8,
+  },
+  filterChip: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e0bfbc',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    elevation: 4,
+    paddingHorizontal: 8,
   },
-  fabText: {
-    color: '#FFF',
-    fontWeight: 'bold',
+  filterChipActive: {
+    backgroundColor: '#ac2b2e',
+    borderColor: '#ac2b2e',
+  },
+  filterText: {
     fontSize: 12,
+    fontWeight: '800',
+    color: '#59413f',
   },
-  compassContainer: {
+  filterTextActive: {
+    color: '#fff',
+  },
+  userMarkerOuter: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(43, 89, 172, 0.22)',
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userMarkerInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2b59ac',
+  },
+  locateButton: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: '#FFF',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0bfbc',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 2,
   },
+  refreshButton: {
+    position: 'absolute',
+    bottom: 14,
+    left: 14,
+    right: 14,
+    minHeight: 42,
+    borderRadius: 10,
+    backgroundColor: '#ac2b2e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    elevation: 3,
+  },
+  refreshText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
   panel: {
     flex: 1,
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    marginTop: -16,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    marginTop: -14,
     paddingTop: 16,
   },
-  panelContent: {
-    padding: 16,
-    paddingBottom: 40,
+  setupBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e0bfbc',
+    borderRadius: 10,
+    backgroundColor: '#fff1f0',
+    padding: 12,
+  },
+  setupTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#ac2b2e',
+  },
+  setupText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#59413f',
+    lineHeight: 17,
+  },
+  panelHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   panelTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '900',
     color: '#1a1c1b',
   },
   panelSubtitle: {
-    fontSize: 12,
-    color: '#777',
     marginTop: 2,
-    marginBottom: 16,
+    fontSize: 12,
+    color: '#59413f',
+    fontWeight: '600',
   },
-  cardList: {
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 28,
     gap: 12,
-    marginBottom: 20,
+  },
+  emptyCard: {
+    borderWidth: 1,
+    borderColor: '#e0bfbc',
+    backgroundColor: '#faf9f7',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#1a1c1b',
+  },
+  emptyText: {
+    fontSize: 12,
+    color: '#59413f',
+    textAlign: 'center',
   },
   card: {
     borderWidth: 1,
@@ -361,142 +587,54 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     backgroundColor: '#faf9f7',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cardTypeName: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#1a1c1b',
-  },
-  cardReporter: {
-    fontSize: 10,
-    color: '#777',
-  },
-  cardDesc: {
-    fontSize: 12,
-    color: '#59413f',
-    lineHeight: 18,
-  },
-  neighborhoodScoreCard: {
-    flexDirection: 'row',
-    backgroundColor: '#f5fff3',
-    borderWidth: 1,
-    borderColor: '#d2ebc4',
-    padding: 14,
-    borderRadius: 10,
-  },
-  scoreTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#346645',
-  },
-  scoreText: {
-    fontSize: 11,
-    color: '#346645',
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 20,
     gap: 12,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a1c1b',
-    marginBottom: 4,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#59413f',
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
-  },
-  pickerChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#faf9f7',
-    borderWidth: 1,
-    borderColor: '#e0bfbc',
-  },
-  pickerChipActive: {
-    backgroundColor: '#ac2b2e',
-    borderColor: '#ac2b2e',
-  },
-  pickerChipText: {
-    fontSize: 11,
-    color: '#59413f',
-    fontWeight: '600',
-  },
-  pickerChipTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#e0bfbc',
-    backgroundColor: '#faf9f7',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 14,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-    paddingTop: 10,
-  },
-  modalActions: {
+  cardTop: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
   },
-  modalButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 8,
+  placeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  cancelBtn: {
-    backgroundColor: '#faf9f7',
     borderWidth: 1,
-    borderColor: '#e0bfbc',
+    borderColor: '#ead5d5',
   },
-  cancelBtnText: {
+  placeInfo: {
+    flex: 1,
+  },
+  placeName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#1a1c1b',
+  },
+  placeType: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ac2b2e',
+  },
+  placeAddress: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
     color: '#59413f',
-    fontWeight: '600',
   },
-  saveBtn: {
+  routeButton: {
+    minHeight: 40,
+    borderRadius: 8,
     backgroundColor: '#ac2b2e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  saveBtnText: {
-    color: '#FFF',
-    fontWeight: 'bold',
+  routeButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
   },
 });
